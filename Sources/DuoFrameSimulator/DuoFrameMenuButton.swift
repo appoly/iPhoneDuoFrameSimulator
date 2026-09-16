@@ -12,6 +12,13 @@ import UIKit
 final class DuoFrameMenuButton: UIButton {
 
     private weak var controller: DuoFrameViewController?
+    /// Position along the edges of the superview's safe area, each axis 0…1. Snapped to an edge on drop, so the button
+    /// always rides an edge. Persisted so it survives launches.
+    private var normalisedCentre = DuoFrameMenuButton.loadNormalisedCentre()
+
+    /// Namespaced to avoid clashing with anything a consuming app stores in `UserDefaults`.
+    private static let positionKey = "DuoFrameSimulator.menuButtonPosition"
+    private static let edgeMargin: CGFloat = 8
 
     init(controller: DuoFrameViewController) {
         self.controller = controller
@@ -35,11 +42,80 @@ final class DuoFrameMenuButton: UIButton {
                 completion(self?.menuElements() ?? [])
             }
         ])
+        addGestureRecognizer(UIPanGestureRecognizer(target: self, action: #selector(handlePan)))
     }
 
     @available(*, unavailable)
     required init?(coder: NSCoder) {
         fatalError("DuoFrameMenuButton is created in code only")
+    }
+
+    // MARK: - Dragging
+
+    /// Places the button at its stored edge position within the superview's safe area. Called by the host on layout.
+    func applyStoredPosition() {
+        guard let superview else { return }
+        bounds = CGRect(origin: .zero, size: intrinsicContentSize)
+        center = centre(in: superview, for: normalisedCentre)
+    }
+
+    @objc private func handlePan(_ gesture: UIPanGestureRecognizer) {
+        guard let superview else { return }
+        switch gesture.state {
+        case .began, .changed:
+            let translation = gesture.translation(in: superview)
+            center = CGPoint(x: center.x + translation.x, y: center.y + translation.y)
+            gesture.setTranslation(.zero, in: superview)
+        case .ended, .cancelled:
+            snapToNearestEdge(in: superview)
+        default:
+            break
+        }
+    }
+
+    private func snapToNearestEdge(in superview: UIView) {
+        let bounds = edgeBounds(in: superview)
+        let normalisedX = bounds.width > 0 ? ((center.x - bounds.minX) / bounds.width).clamped01 : 0.5
+        let normalisedY = bounds.height > 0 ? ((center.y - bounds.minY) / bounds.height).clamped01 : 0.5
+        // Snap the axis whose nearest edge is closest, keeping the position along that edge.
+        let distances = [normalisedX, 1 - normalisedX, normalisedY, 1 - normalisedY]
+        var snapped = CGPoint(x: normalisedX, y: normalisedY)
+        switch distances.min() {
+        case normalisedX: snapped.x = 0
+        case 1 - normalisedX: snapped.x = 1
+        case normalisedY: snapped.y = 0
+        default: snapped.y = 1
+        }
+        normalisedCentre = snapped
+        saveNormalisedCentre()
+        UIView.animate(withDuration: 0.2) { self.applyStoredPosition() }
+    }
+
+    /// The rect the button's centre may occupy: the superview's safe area inset by the button's half-size and a margin.
+    private func edgeBounds(in superview: UIView) -> CGRect {
+        let safe = superview.safeAreaLayoutGuide.layoutFrame
+        let inset = UIEdgeInsets(
+            top: bounds.height / 2 + Self.edgeMargin, left: bounds.width / 2 + Self.edgeMargin,
+            bottom: bounds.height / 2 + Self.edgeMargin, right: bounds.width / 2 + Self.edgeMargin
+        )
+        let rect = safe.inset(by: inset)
+        return rect.width >= 0 && rect.height >= 0 ? rect : CGRect(x: safe.midX, y: safe.midY, width: 0, height: 0)
+    }
+
+    private func centre(in superview: UIView, for normalised: CGPoint) -> CGPoint {
+        let bounds = edgeBounds(in: superview)
+        return CGPoint(x: bounds.minX + normalised.x * bounds.width, y: bounds.minY + normalised.y * bounds.height)
+    }
+
+    private static func loadNormalisedCentre() -> CGPoint {
+        guard let stored = UserDefaults.standard.array(forKey: positionKey) as? [Double], stored.count == 2 else {
+            return CGPoint(x: 1, y: 0)   // top-right by default
+        }
+        return CGPoint(x: stored[0], y: stored[1])
+    }
+
+    private func saveNormalisedCentre() {
+        UserDefaults.standard.set([Double(normalisedCentre.x), Double(normalisedCentre.y)], forKey: Self.positionKey)
     }
 
     private func menuElements() -> [UIMenuElement] {
@@ -196,5 +272,9 @@ private extension UIUserInterfaceSizeClass {
         @unknown default: "?"
         }
     }
+}
+
+private extension CGFloat {
+    var clamped01: CGFloat { Swift.min(1, Swift.max(0, self)) }
 }
 #endif

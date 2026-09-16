@@ -490,13 +490,14 @@ private final class DuoFrameChromeViewController: UIViewController {
         caption.isUserInteractionEnabled = false
         view.addSubview(caption)
 
-        menuButton.translatesAutoresizingMaskIntoConstraints = false
+        // The button positions itself (draggable, edge-snapped, persisted), so it manages its own frame.
         menuButton.isHidden = !DuoFrameSimulator.showsButtonByDefault
         view.addSubview(menuButton)
-        NSLayoutConstraint.activate([
-            menuButton.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 8),
-            menuButton.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -8)
-        ])
+    }
+
+    override func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
+        menuButton.applyStoredPosition()
     }
 
     /// Framing off: hide everything but the menu button.

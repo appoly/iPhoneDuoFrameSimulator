@@ -5,9 +5,10 @@ Duo simulator ships. It hosts the app's real root view controller inside a conta
 chosen footprint, fakes that display's safe area, and overrides its size classes, all driven from a
 floating menu in the top-right corner of the window.
 
-It resizes the *content*, not the *window*, because
-iOS exposes no "set my frame" API — so the OS still thinks it's on the host device, but the view
-hierarchy is handed the size, safe area and traits the Duo would report.
+It reframes the app by resizing its **window** to the chosen footprint (and scaling the window for Display Zoom),
+so the OS still thinks it's on the host device, but the app — and everything UIKit hangs off the window, including
+`.sheet`, `.fullScreenCover`, alerts and popovers — is handed the size, safe area and traits the Duo would report.
+Debug chrome lives in a separate passthrough window above it.
 
 ## What it does
 
@@ -59,17 +60,29 @@ hierarchy is handed the size, safe area and traits the Duo would report.
   always read clock, network, nav bar, tab bar from the top; the camera is a separate cutout at its corner. Set
   via `DuoFrameVerticalBar.CameraPlacement`.
 
-There is deliberately no "resize the real window" feature: iOS exposes no API to set a window's size
-(`GeometryPreferences.iOS` carries only orientation, `sizeRestrictions` only clamps a user drag), so the
-whole tool resizes the *content* instead.
+**Why the window, not the content.** An earlier version transformed the app's view inside a full-screen container.
+That works for the app itself but not for `.sheet` / `.fullScreenCover` / alerts / popovers: UIKit presents those in
+a transition view attached to the *window*, above the container, so they ignored the transform and filled the whole
+screen. Framing the window instead puts every presentation inside the footprint. It does *not* change the window's
+scene — iOS exposes no API for that (`GeometryPreferences.iOS` carries only orientation, `sizeRestrictions` only
+clamps a user drag) — it sets the window's own `bounds`, `transform` and `center` within the scene.
 
-**Safe area is supplied wholesale, never inherited.** The hosted root lives under a shield view controller whose
-view is pinned inside the host's safe area, so it inherits none of it; `additionalSafeAreaInsets` then carries the
-larger of the faked inset and the host's real overlap (scaled into the root's points). This is forced by UIKit:
-it derives a controller view's safe area from the nearest ancestor *controller's* view, hands a transformed view the
-host's overlap un-scaled (or nothing at all when the controller's own view is transformed), and ignores negative
-`additionalSafeAreaInsets`. Any layout that scales the content, Display Zoom or a frame bigger than the host, breaks
-without this.
+**Safe area.** The framed window inherits little or none of the host's safe area (a sub-screen window usually reports
+zero), so the hosted root is given `additionalSafeAreaInsets` = the faked Duo inset, clamped up to the host's real
+overlap where the footprint still reaches a hardware region. There is no transform between the controller's view and
+the window, so the child inherits the window's own insets normally.
+
+**Caveats to verify on device (this path is new and untested):**
+- **The system may fight a custom window frame.** SwiftUI's `WindowGroup` and scene changes can reset `window.frame`;
+  the tool re-applies it on every layout pass, but if the OS overrides it you'll see it snap back. This is the main
+  risk of the window approach.
+- **Sheet sizing.** A `.pageSheet` sizes itself to the (now small) window, which is the point, but detents and the
+  card's own insets are the system's to place; check they land sensibly, especially under Display Zoom.
+- **Safe area under Display Zoom at full screen.** When the footprint fills the screen and the window reports real
+  insets, those are in the window's zoomed point space; the clamp handles the common cases but the notch overlap
+  edge case wants a real-device check.
+- **The keyboard** follows the window, so it should now sit inside the frame; confirm it isn't clipped by the corner
+  mask.
 
 **Fit is to the whole physical screen**, not the host's safe area. A frame the same size as the real screen
 renders full-screen at 1:1; a smaller frame renders at true point size, centred with a border; only a frame

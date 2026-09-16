@@ -8,8 +8,11 @@
 #if DEBUG
 import UIKit
 
-/// Hosts the app's real root as a child pinned to a Duo display size, with that display's size classes and a
-/// guessed safe area, scaled to fit the host window. Frame changes resize the child live, like a fold would.
+/// Hosts the app's real root and frames it by resizing the *window*, not the content within it. Because the whole
+/// window is sized to the footprint (and scaled for Display Zoom), window-level presentations — `.sheet`,
+/// `.fullScreenCover`, alerts, popovers — are constrained to the simulated device too, which content-only scaling
+/// could never reach. Debug chrome (outline, caption, menu button, split companion) lives in a separate passthrough
+/// window above the app window.
 final class DuoFrameViewController: UIViewController {
 
     let root: UIViewController
@@ -22,17 +25,15 @@ final class DuoFrameViewController: UIViewController {
         }
     }
 
-    private let outlineLayer = CAShapeLayer()
-    private let rootMaskLayer = CAShapeLayer()
-    private let companionMaskLayer = CAShapeLayer()
-    private let caption = UILabel()
-    private let shield: DuoFrameShieldViewController
-    private var frameView: UIView { shield.frameView }
-    private let verticalBar = DuoFrameVerticalBar()
-    private let companion = DuoFrameCompanionView()
+    private let windowMaskLayer = CAShapeLayer()
     private lazy var menuButton = DuoFrameMenuButton(controller: self)
+    private lazy var chrome = DuoFrameChromeViewController(menuButton: menuButton)
+    private let verticalBar = DuoFrameVerticalBar()
+    private let shield: DuoFrameShieldViewController
+    private var chromeWindow: UIWindow?
     private var appliedScale: CGFloat = 1
     private var hasAppliedScreenOverrides = false
+    private var isFramingWindow = false
 
     private static let splitGutter: CGFloat = 14
 
@@ -54,38 +55,27 @@ final class DuoFrameViewController: UIViewController {
         super.viewDidLoad()
         view.backgroundColor = .black
 
+        // The framed window still reports the host's real safe area to its root view, and `additionalSafeAreaInsets`
+        // can only add to that, so a frame smaller than the host could never sit above the host's insets. The shield's
+        // view is pinned inside this view's safe area, so it inherits nothing; the hosted root overhangs it to fill the
+        // frame while taking its whole (faked) safe area from `additionalSafeAreaInsets`.
         addChild(shield)
         view.addSubview(shield.view)
-        shield.didMove(toParent: self)
-
-        companion.isHidden = true
-        companion.layer.mask = companionMaskLayer
-        view.addSubview(companion)
-
-        outlineLayer.fillColor = UIColor.clear.cgColor
-        outlineLayer.strokeColor = UIColor.white.withAlphaComponent(0.35).cgColor
-        outlineLayer.lineWidth = 1
-        outlineLayer.isHidden = true
-        view.layer.addSublayer(outlineLayer)
-
-        caption.font = .monospacedSystemFont(ofSize: 11, weight: .medium)
-        caption.textColor = .white.withAlphaComponent(0.7)
-        caption.textAlignment = .center
-        view.addSubview(caption)
-
-        menuButton.translatesAutoresizingMaskIntoConstraints = false
-        menuButton.isHidden = !DuoFrameSimulator.showsButtonByDefault
-        view.addSubview(menuButton)
+        shield.view.translatesAutoresizingMaskIntoConstraints = false
         NSLayoutConstraint.activate([
-            menuButton.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 8),
-            menuButton.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -8)
+            shield.view.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
+            shield.view.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor),
+            shield.view.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor),
+            shield.view.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor)
         ])
+        shield.didMove(toParent: self)
 
         apply()
     }
 
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
+        ensureChromeWindow()
         // Be a first responder so shake events have somewhere to start when the app has none; being the root also
         // puts this controller at the end of every responder chain, so a shake bubbles up here to toggle the button.
         becomeFirstResponder()
@@ -102,7 +92,12 @@ final class DuoFrameViewController: UIViewController {
 
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
-        layoutRoot()
+        frameWindow()
+    }
+
+    override func viewSafeAreaInsetsDidChange() {
+        super.viewSafeAreaInsetsDidChange()
+        frameWindow()
     }
 
     // MARK: - Forwarding to the hosted root
@@ -124,7 +119,7 @@ final class DuoFrameViewController: UIViewController {
         } else {
             verticalBar.detach()
         }
-        view.setNeedsLayout()
+        frameWindow()
     }
 
     /// The outer display's camera is a physical cutout that rotates with the device; the inner display's is
@@ -168,58 +163,86 @@ final class DuoFrameViewController: UIViewController {
         hasAppliedScreenOverrides = true
     }
 
-    // MARK: - Layout
+    private func ensureChromeWindow() {
+        guard chromeWindow == nil, let scene = view.window?.windowScene else { return }
+        let window = DuoFramePassthroughWindow(windowScene: scene)
+        // Above the app window so the menu button is reachable even when the frame fills the screen; the passthrough
+        // window forwards every touch that misses the button down to the app window.
+        window.windowLevel = .normal + 1
+        // Full screen: its safe area is the host's real device insets, the source for the framed root's overlap.
+        chrome.onSafeAreaChange = { [weak self] in self?.frameWindow() }
+        window.rootViewController = chrome
+        // Assign before showing: making the window visible lays the chrome out synchronously, which can call back in
+        // here; the stored reference stops a second window being built (and `chrome` re-rooted onto it).
+        chromeWindow = window
+        window.isHidden = false
+    }
 
-    private func layoutRoot() {
-        shield.view.frame = view.safeAreaLayoutGuide.layoutFrame
+    // MARK: - Framing the window
+
+    private func frameWindow() {
+        guard !isFramingWindow, let window = view.window, let scene = window.windowScene else { return }
+        // Raise the guard before touching the chrome window: showing it lays the chrome out synchronously and can
+        // re-enter through `onSafeAreaChange`, which must be ignored until this pass finishes.
+        isFramingWindow = true
+        defer { isFramingWindow = false }
+        ensureChromeWindow()
+
+        // The real screen, read past the UIScreen.bounds override so the arena is always the true host size.
+        let arena = DuoFrameScreenOverride.hostBounds(of: scene.screen)
         guard let geometry = settings.geometry else {
-            frameView.transform = .identity
-            frameView.frame = view.convert(view.bounds, to: shield.view)
-            frameView.clipsToBounds = false
-            frameView.layer.mask = nil
-            // The shield inherits nothing even when framing is off, so the host's real insets are supplied here.
-            if root.additionalSafeAreaInsets != view.safeAreaInsets {
-                root.additionalSafeAreaInsets = view.safeAreaInsets
-            }
-            outlineLayer.isHidden = true
-            caption.isHidden = true
+            // Off: the shield still zeroes what the root inherits, so hand it the host's real insets to reproduce
+            // normal behaviour.
+            resetWindow(window, to: arena)
+            let host = view.safeAreaInsets
+            if root.additionalSafeAreaInsets != host { root.additionalSafeAreaInsets = host }
+            chrome.clear()
             verticalBar.isHidden = true
-            companion.isHidden = true
+            appliedScale = 1
             return
         }
-        // A split pose lays the app and a companion pane across a full-inner-display stage; every other pose fills its
-        // own footprint. Both share the fit-scale maths.
+
+        // A split pose lays the app and a companion pane across a full-inner-display stage; every other pose fills
+        // its own footprint. Both share the fit-scale maths. Fit is to the whole screen: a frame the size of the
+        // screen renders 1:1, a smaller one at true point size centred, only a larger one scales below 1.
         let stage = geometry.isSplit
             ? CGSize(width: geometry.size.width * 2 + Self.splitGutter, height: geometry.size.height)
             : geometry.size
-        // Fit to the whole physical screen, not the host's safe area, so a frame the same size as (or smaller than)
-        // the real screen renders at true point size — full-screen at a 1:1 match, centred with a border when smaller.
-        // Only a frame larger than the screen scales below 1.
-        let arena = view.bounds
         let fit = min(arena.width / stage.width, arena.height / stage.height)
         let scale = settings.matchesPhysicalDensity ? min(fit, physicalScale(for: geometry)) : min(fit, 1)
-        appliedScale = scale / geometry.zoom   // the scale actually applied to the content, magnified by Display Zoom
+        // contentScale magnifies the zoomed-out layout back to the footprint.
+        let metrics = FrameMetrics(arena: arena, scale: scale, contentScale: scale / geometry.zoom)
+        appliedScale = metrics.contentScale
 
         if geometry.isSplit {
-            layoutSplit(geometry: geometry, arena: arena, stage: stage, scale: scale)
+            frameSplit(window: window, geometry: geometry, stage: stage, metrics: metrics)
         } else {
-            layoutSingle(geometry: geometry, arena: arena, scale: scale)
+            frameSingle(window: window, geometry: geometry, metrics: metrics)
         }
+        verticalBar.isHidden = false
     }
 
-    private func layoutSingle(geometry: DuoFrameGeometry, arena: CGRect, scale: CGFloat) {
-        let footprint = paneRect(size: geometry.size, scale: scale, centre: CGPoint(x: arena.midX, y: arena.midY))
-        let contentScale = scale / geometry.zoom
-        placeRoot(in: footprint, geometry: geometry, contentScale: contentScale)
-        let insets = geometry.safeAreaInsets.scaled(geometry.zoom)
-        applyFakedSafeArea(target: insets, footprint: footprint, scale: contentScale)
-        companion.isHidden = true
-        setOutline(rect: footprint, radii: geometry.cornerRadii.scaled(scale))
-        layoutCaption(scale: contentScale, footprint: footprint)
+    private struct FrameMetrics {
+        let arena: CGRect
+        let scale: CGFloat
+        let contentScale: CGFloat
+    }
+
+    private func frameSingle(window: UIWindow, geometry: DuoFrameGeometry, metrics: FrameMetrics) {
+        let centre = CGPoint(x: metrics.arena.midX, y: metrics.arena.midY)
+        let footprint = paneRect(size: geometry.size, scale: metrics.scale, centre: centre)
+        setWindow(window, footprint: footprint, geometry: geometry, contentScale: metrics.contentScale)
+        applySafeArea(target: geometry.safeAreaInsets.scaled(geometry.zoom), footprint: footprint, metrics: metrics)
+        chrome.show(
+            outline: footprint, radii: geometry.cornerRadii.scaled(metrics.scale),
+            caption: statusSummary(scale: metrics.contentScale), companion: nil, companionRadii: nil
+        )
         verticalBar.frame = verticalBarStrip(for: geometry)
     }
 
-    private func layoutSplit(geometry: DuoFrameGeometry, arena: CGRect, stage: CGSize, scale: CGFloat) {
+    private func frameSplit(window: UIWindow, geometry: DuoFrameGeometry, stage: CGSize, metrics: FrameMetrics) {
+        let arena = metrics.arena
+        let scale = metrics.scale
         let paneStep = (geometry.size.width + Self.splitGutter) * scale
         let stageOrigin = CGPoint(x: (arena.midX - stage.width * scale / 2), y: (arena.midY - stage.height * scale / 2))
         // Each app keeps its controls on its outer edge, so the app sits on the same side as its side controls.
@@ -228,81 +251,73 @@ final class DuoFrameViewController: UIViewController {
         let companionX = stageOrigin.x + (appOnRight ? 0 : paneStep)
 
         let appPane = paneRect(size: geometry.size, scale: scale, centre: CGPoint(x: appCentreX, y: arena.midY))
-        let contentScale = scale / geometry.zoom
-        placeRoot(in: appPane, geometry: geometry, contentScale: contentScale)
-        let appInsets = geometry.safeAreaInsets.scaled(geometry.zoom)
-        applyFakedSafeArea(target: appInsets, footprint: appPane, scale: contentScale)
+        setWindow(window, footprint: appPane, geometry: geometry, contentScale: metrics.contentScale)
+        applySafeArea(target: geometry.safeAreaInsets.scaled(geometry.zoom), footprint: appPane, metrics: metrics)
 
-        companion.frame = CGRect(
+        let companion = CGRect(
             x: companionX.rounded(), y: appPane.minY,
             width: (geometry.size.width * scale).rounded(), height: appPane.height
         )
         let companionRadii = DuoFrameCornerRadii
             .forPane(preset: geometry.preset, edge: geometry.sideEdge, isCompanion: true)
             .scaled(scale)
-        setMask(companionMaskLayer, path: companionRadii.path(in: companion.bounds), frame: companion.bounds)
-        companion.isHidden = false
-
-        setOutline(rect: appPane, radii: geometry.cornerRadii.scaled(scale))
-        layoutCaption(scale: contentScale, footprint: appPane)
+        chrome.show(
+            outline: appPane, radii: geometry.cornerRadii.scaled(scale),
+            caption: statusSummary(scale: metrics.contentScale), companion: companion, companionRadii: companionRadii
+        )
         verticalBar.frame = verticalBarStrip(for: geometry)
     }
 
-    /// A shape-layer stroke around the app pane. Its path lives in the container's coordinate space, so its frame
-    /// spans the whole view and the footprint rect maps straight through.
-    private func setOutline(rect: CGRect, radii: DuoFrameCornerRadii) {
-        setMask(outlineLayer, path: radii.path(in: rect), frame: view.bounds)
-        outlineLayer.isHidden = false
+    /// Sizes the app window to the footprint. The window's bounds are the (zoomed) layout size, a scale transform
+    /// magnifies that to the on-screen footprint, and the mask rounds the device corners. Guarded against the layout
+    /// pass that setting `bounds` triggers.
+    private func setWindow(_ window: UIWindow, footprint: CGRect, geometry: DuoFrameGeometry, contentScale: CGFloat) {
+        let bounds = CGRect(origin: .zero, size: geometry.layoutSize)
+        if window.bounds.size != geometry.layoutSize { window.bounds = bounds }
+        window.transform = CGAffineTransform(scaleX: contentScale, y: contentScale)
+        window.center = CGPoint(x: footprint.midX, y: footprint.midY)
+        window.clipsToBounds = true
+        window.layer.mask = windowMaskLayer
+        setMask(windowMaskLayer, path: geometry.cornerRadii.scaled(geometry.zoom).path(in: bounds), frame: bounds)
     }
 
-    /// Updates a shape layer's path and frame without the implicit animation a layout pass would otherwise trigger.
-    private func setMask(_ layer: CAShapeLayer, path: CGPath, frame: CGRect) {
-        CATransaction.begin()
-        CATransaction.setDisableActions(true)
-        layer.frame = frame
-        layer.path = path
-        CATransaction.commit()
+    /// Resets the app window to fill the screen with no transform or mask, for the framing-off state.
+    private func resetWindow(_ window: UIWindow, to arena: CGRect) {
+        if window.bounds.size != arena.size { window.bounds = CGRect(origin: .zero, size: arena.size) }
+        window.transform = .identity
+        window.center = CGPoint(x: arena.midX, y: arena.midY)
+        window.layer.mask = nil
+        window.clipsToBounds = false
     }
 
-    private func paneRect(size: CGSize, scale: CGFloat, centre: CGPoint) -> CGRect {
-        CGRect(
-            x: (centre.x - size.width * scale / 2).rounded(),
-            y: (centre.y - size.height * scale / 2).rounded(),
-            width: size.width * scale, height: size.height * scale
+    /// The container reports zero safe area while framed, so the root's `additionalSafeAreaInsets` is the whole inset:
+    /// the faked Duo value, raised to the host's real overlap only where the on-screen footprint still reaches a
+    /// hardware region (a frame as large as, or larger than, the host over the notch). The host's real insets come
+    /// from the full-screen chrome window, in screen points, so they're converted to the content's points by the
+    /// content scale.
+    private func applySafeArea(target: UIEdgeInsets, footprint: CGRect, metrics: FrameMetrics) {
+        let host = chromeWindow?.safeAreaInsets ?? .zero
+        let arena = metrics.arena
+        let scale = metrics.contentScale
+        let overlap = UIEdgeInsets(
+            top: max(0, host.top - footprint.minY) / scale,
+            left: max(0, host.left - footprint.minX) / scale,
+            bottom: max(0, host.bottom - (arena.height - footprint.maxY)) / scale,
+            right: max(0, host.right - (arena.width - footprint.maxX)) / scale
         )
-    }
-
-    private func placeRoot(in footprint: CGRect, geometry: DuoFrameGeometry, contentScale: CGFloat) {
-        // Display Zoom lays the app out at the smaller layout size; the compensating content scale magnifies it back
-        // to the same footprint. Corners are scaled by zoom too so they still render at the physical radius
-        // (× zoom × contentScale == × the fit scale).
-        frameView.bounds = CGRect(origin: .zero, size: geometry.layoutSize)
-        frameView.transform = CGAffineTransform(scaleX: contentScale, y: contentScale)
-        frameView.center = view.convert(CGPoint(x: footprint.midX, y: footprint.midY), to: shield.view)
-        frameView.clipsToBounds = true
-        frameView.layer.mask = rootMaskLayer
-        let radii = geometry.cornerRadii.scaled(geometry.zoom)
-        setMask(rootMaskLayer, path: radii.path(in: frameView.bounds), frame: frameView.bounds)
-    }
-
-    /// The hosted root sees the faked `target`, or the host's real inset where the hardware needs more (its island
-    /// still overlaps the content). The shield leaves it inheriting nothing, so this is the whole amount. Values are in
-    /// the root's own points, so the real overlap is un-scaled by the fit scale.
-    private func applyFakedSafeArea(target: UIEdgeInsets, footprint: CGRect, scale: CGFloat) {
-        let host = view.safeAreaInsets
-        let insets = UIEdgeInsets(
-            top: max(target.top, max(0, host.top - footprint.minY) / scale),
-            left: max(target.left, max(0, host.left - footprint.minX) / scale),
-            bottom: max(target.bottom, max(0, host.bottom - (view.bounds.height - footprint.maxY)) / scale),
-            right: max(target.right, max(0, host.right - (view.bounds.width - footprint.maxX)) / scale)
+        let additional = UIEdgeInsets(
+            top: max(target.top, overlap.top),
+            left: max(target.left, overlap.left),
+            bottom: max(target.bottom, overlap.bottom),
+            right: max(target.right, overlap.right)
         )
-        if root.additionalSafeAreaInsets != insets {
-            root.additionalSafeAreaInsets = insets
+        if root.additionalSafeAreaInsets != additional {
+            root.additionalSafeAreaInsets = additional
         }
     }
 
     /// The bar is a child of `root.view`, so it works in that view's point space — which is the Display-Zoom layout
-    /// size, not the nominal device size.
+    /// size (the window's bounds), not the nominal device size.
     private func verticalBarStrip(for geometry: DuoFrameGeometry) -> CGRect {
         guard let edge = geometry.sideEdge else { return .zero }
         let bounds = root.view.bounds
@@ -314,24 +329,21 @@ final class DuoFrameViewController: UIViewController {
         )
     }
 
-    private func layoutCaption(scale: CGFloat, footprint: CGRect) {
-        // The frame fits the full screen, but the caption is debug chrome, so it stays inside the host's safe area.
-        let safe = view.safeAreaLayoutGuide.layoutFrame
-        caption.text = statusSummary(scale: scale)
-        caption.sizeToFit()
-        let height = caption.bounds.height
-        let below = footprint.maxY + 6
-        let above = footprint.minY - 6 - height
-        if below + height <= safe.maxY {
-            caption.frame.origin.y = below
-        } else if above >= safe.minY {
-            caption.frame.origin.y = above
-        } else {
-            caption.isHidden = true
-            return
-        }
-        caption.isHidden = false
-        caption.frame.origin.x = (footprint.midX - caption.bounds.width / 2).rounded()
+    private func paneRect(size: CGSize, scale: CGFloat, centre: CGPoint) -> CGRect {
+        CGRect(
+            x: (centre.x - size.width * scale / 2).rounded(),
+            y: (centre.y - size.height * scale / 2).rounded(),
+            width: size.width * scale, height: size.height * scale
+        )
+    }
+
+    /// Updates a shape layer's path and frame without the implicit animation a layout pass would otherwise trigger.
+    private func setMask(_ layer: CAShapeLayer, path: CGPath, frame: CGRect) {
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        layer.frame = frame
+        layer.path = path
+        CATransaction.commit()
     }
 
     /// Host points per inch over the simulated device's, so one of its points renders at its real physical size.
@@ -354,7 +366,9 @@ final class DuoFrameViewController: UIViewController {
 
     func statusSummary(scale: CGFloat? = nil) -> String {
         guard let geometry = settings.geometry else {
-            return "Framing off · host \(Int(view.bounds.width))×\(Int(view.bounds.height)) pt"
+            let arena = view.window?.windowScene?.screen ?? UIScreen.main
+            let bounds = DuoFrameScreenOverride.hostBounds(of: arena)
+            return "Framing off · host \(Int(bounds.width))×\(Int(bounds.height)) pt"
         }
         let traits = root.traitCollection
         let insets = geometry.safeAreaInsets
@@ -403,28 +417,133 @@ final class DuoFrameViewController: UIViewController {
             settings.otherDevice = DuoDevice.custom(size)
             settings.preset = .otherDevice
         })
-        topmostPresenter.present(alert, animated: true)
-    }
-
-    private var topmostPresenter: UIViewController {
-        var presenter: UIViewController = self
-        while let presented = presenter.presentedViewController {
-            presenter = presented
-        }
-        return presenter
+        (chromeWindow?.rootViewController ?? self).present(alert, animated: true)
     }
 }
 
-/// Hosts the content with its view pinned inside the host's safe area, so the content inherits none of it and
-/// `additionalSafeAreaInsets` is the whole story. UIKit derives a controller view's safe area from the nearest
-/// ancestor controller's view (a transformed one gets the host's overlap un-scaled, or nothing at all if the
-/// controller's own view is transformed) and ignores a negative `additionalSafeAreaInsets`, so this is the only way
-/// to hand the content less than the host's own inset. `frameView` carries the fit/zoom transform and corner mask
-/// and overhangs the shield; touches pass through to it.
+/// The debug chrome, hosted in the passthrough window above the app window. Draws the frame outline, the status
+/// caption, the split-view companion pane and the menu button. Everything but the button is non-interactive so touches
+/// fall through to the app.
+private final class DuoFrameChromeViewController: UIViewController {
+
+    private let outlineLayer = CAShapeLayer()
+    private let caption = UILabel()
+    private let companion = DuoFrameCompanionView()
+    private let companionMaskLayer = CAShapeLayer()
+    private let menuButton: DuoFrameMenuButton
+    var onSafeAreaChange: (() -> Void)?
+
+    init(menuButton: DuoFrameMenuButton) {
+        self.menuButton = menuButton
+        super.init(nibName: nil, bundle: nil)
+    }
+
+    override func viewSafeAreaInsetsDidChange() {
+        super.viewSafeAreaInsetsDidChange()
+        onSafeAreaChange?()
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        fatalError("DuoFrameChromeViewController is created in code only")
+    }
+
+    override func loadView() {
+        view = UIView()
+        view.backgroundColor = .clear
+    }
+
+    override func viewDidLoad() {
+        super.viewDidLoad()
+
+        companion.isHidden = true
+        companion.isUserInteractionEnabled = false
+        companion.layer.mask = companionMaskLayer
+        view.addSubview(companion)
+
+        outlineLayer.fillColor = UIColor.clear.cgColor
+        outlineLayer.strokeColor = UIColor.white.withAlphaComponent(0.35).cgColor
+        outlineLayer.lineWidth = 1
+        outlineLayer.isHidden = true
+        view.layer.addSublayer(outlineLayer)
+
+        caption.font = .monospacedSystemFont(ofSize: 11, weight: .medium)
+        caption.textColor = .white.withAlphaComponent(0.7)
+        caption.textAlignment = .center
+        caption.isUserInteractionEnabled = false
+        view.addSubview(caption)
+
+        menuButton.translatesAutoresizingMaskIntoConstraints = false
+        menuButton.isHidden = !DuoFrameSimulator.showsButtonByDefault
+        view.addSubview(menuButton)
+        NSLayoutConstraint.activate([
+            menuButton.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 8),
+            menuButton.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -8)
+        ])
+    }
+
+    /// Framing off: hide everything but the menu button.
+    func clear() {
+        outlineLayer.isHidden = true
+        caption.isHidden = true
+        companion.isHidden = true
+    }
+
+    func show(
+        outline: CGRect,
+        radii: DuoFrameCornerRadii,
+        caption text: String,
+        companion companionRect: CGRect?,
+        companionRadii: DuoFrameCornerRadii?
+    ) {
+        loadViewIfNeeded()
+        setMask(outlineLayer, path: radii.path(in: outline), frame: view.bounds)
+        outlineLayer.isHidden = false
+        layoutCaption(text: text, footprint: outline)
+        if let companionRect, let companionRadii {
+            companion.frame = companionRect
+            setMask(companionMaskLayer, path: companionRadii.path(in: companion.bounds), frame: companion.bounds)
+            companion.isHidden = false
+        } else {
+            companion.isHidden = true
+        }
+    }
+
+    private func layoutCaption(text: String, footprint: CGRect) {
+        let safe = view.safeAreaLayoutGuide.layoutFrame
+        caption.text = text
+        caption.sizeToFit()
+        let height = caption.bounds.height
+        let below = footprint.maxY + 6
+        let above = footprint.minY - 6 - height
+        if below + height <= safe.maxY {
+            caption.frame.origin.y = below
+        } else if above >= safe.minY {
+            caption.frame.origin.y = above
+        } else {
+            caption.isHidden = true
+            return
+        }
+        caption.isHidden = false
+        caption.frame.origin.x = (footprint.midX - caption.bounds.width / 2).rounded()
+    }
+
+    private func setMask(_ layer: CAShapeLayer, path: CGPath, frame: CGRect) {
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        layer.frame = frame
+        layer.path = path
+        CATransaction.commit()
+    }
+}
+
+/// Zeroes the safe area the hosted root inherits. Its own view is pinned inside the parent's safe area, so it inherits
+/// nothing (a view cannot report less safe area than it inherits, and `additionalSafeAreaInsets` only adds); the hosted
+/// content is then held overhanging this view to fill the whole frame, taking its safe area entirely from the parent's
+/// `additionalSafeAreaInsets`.
 private final class DuoFrameShieldViewController: UIViewController {
 
     let content: UIViewController
-    let frameView = UIView()
 
     init(content: UIViewController) {
         self.content = content
@@ -438,17 +557,24 @@ private final class DuoFrameShieldViewController: UIViewController {
 
     override func loadView() {
         view = DuoFrameShieldView()
+        view.backgroundColor = .clear
         view.clipsToBounds = false
     }
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        view.addSubview(frameView)
         addChild(content)
-        content.view.frame = frameView.bounds
-        content.view.autoresizingMask = [.flexibleWidth, .flexibleHeight]
-        frameView.addSubview(content.view)
+        content.view.autoresizingMask = []
+        view.addSubview(content.view)
         content.didMove(toParent: self)
+    }
+
+    override func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
+        // Overhang the shield to cover the whole frame; the shield's inset only governs the inherited safe area.
+        if let parent = view.superview {
+            content.view.frame = view.convert(parent.bounds, from: parent)
+        }
     }
 
     override var childForStatusBarStyle: UIViewController? { content }
@@ -458,9 +584,19 @@ private final class DuoFrameShieldViewController: UIViewController {
     override var supportedInterfaceOrientations: UIInterfaceOrientationMask { content.supportedInterfaceOrientations }
 }
 
+/// Reports a point as inside when any subview (the overhanging content) contains it, so touches in the region the
+/// content extends beyond this view's own bounds still reach it.
 private final class DuoFrameShieldView: UIView {
     override func point(inside point: CGPoint, with event: UIEvent?) -> Bool {
         subviews.contains { $0.point(inside: convert(point, to: $0), with: event) }
+    }
+}
+
+/// Passes every touch that doesn't land on an interactive subview (the menu button) down to the window beneath it.
+private final class DuoFramePassthroughWindow: UIWindow {
+    override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
+        let hit = super.hitTest(point, with: event)
+        return hit === rootViewController?.view ? nil : hit
     }
 }
 

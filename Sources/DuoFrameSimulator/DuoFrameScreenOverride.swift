@@ -31,6 +31,12 @@ enum DuoFrameScreenOverride {
         isInstalled ? screen.duoFrameNativeScale() : screen.nativeScale
     }
 
+    /// The host's real bounds, bypassing the `bounds` override. After the exchange the `duoFrameBounds` selector runs
+    /// the original getter, so this returns the true screen size even while `bounds` is overridden.
+    static func hostBounds(of screen: UIScreen) -> CGRect {
+        isInstalled ? screen.duoFrameBounds() : screen.bounds
+    }
+
     private static func swizzle(_ original: Selector, with replacement: Selector) {
         guard let originalMethod = class_getInstanceMethod(UIScreen.self, original),
               let replacementMethod = class_getInstanceMethod(UIScreen.self, replacement) else { return }

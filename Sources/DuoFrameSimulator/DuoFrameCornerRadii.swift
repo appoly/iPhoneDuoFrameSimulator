@@ -21,15 +21,11 @@ struct DuoFrameCornerRadii: Equatable {
     /// bottom edge, 66 pt (28 inset + 38 diameter) along the edge. A continuous corner straightens out about 1.53
     /// radii along each edge, so the radius is 66 / 1.53.
     static let large: CGFloat = 43
-    static let small: CGFloat = 8
-    /// The outer display's hinge edge is a hard fold, so its corners are nearly square — squarer than the blended
-    /// seam of an inner Split View pane.
+    /// An inner Split View pane's corners against the divider. Unmeasured; a guess between the exterior and the hinge.
+    static let seam: CGFloat = 26
+    /// The outer display's hinge edge is a hard fold, so its corners are nearly square — squarer than a Split View
+    /// pane's seam.
     static let outerHinge: CGFloat = 6
-
-    /// Blends each corner from the roundedness of the two edges meeting there (0 = seam/hinge, 1 = device exterior).
-    private static func blend(_ edgeA: CGFloat, _ edgeB: CGFloat) -> CGFloat {
-        small + (edgeA + edgeB) / 2 * (large - small)
-    }
 
     func scaled(_ scale: CGFloat) -> DuoFrameCornerRadii {
         DuoFrameCornerRadii(
@@ -48,7 +44,7 @@ struct DuoFrameCornerRadii: Equatable {
         return UnevenRoundedRectangle(cornerRadii: radii, style: .continuous).path(in: rect).cgPath
     }
 
-    /// Per-edge roundedness (0…1) for a pane, then the four corners blended from it.
+    /// The four corner radii for a pane.
     /// - `edge`: the app's side-controls edge (which physical side its controls sit on).
     /// - `isCompanion`: the placeholder pane opposite the app in Split View, whose seam faces the app.
     static func forPane(preset: DuoFramePreset, edge: DuoFrameSideEdge?, isCompanion: Bool) -> DuoFrameCornerRadii {
@@ -62,13 +58,9 @@ struct DuoFrameCornerRadii: Equatable {
             return DuoFrameCornerRadii(uniform: large)   // a whole inner display (or an arbitrary size)
         case .innerSplitHalf:
             // The seam is the pane's inner edge: opposite the app's controls, and the mirror of that for the companion.
-            // It reads as a softly-blended corner, not a hard hinge.
             let seamOnRight = isCompanion ? controlsOnRight : !controlsOnRight
-            let (left, right): (CGFloat, CGFloat) = seamOnRight ? (1, 0) : (0, 1)
-            return DuoFrameCornerRadii(
-                topLeft: blend(1, left), topRight: blend(1, right),
-                bottomLeft: blend(1, left), bottomRight: blend(1, right)
-            )
+            let (left, right) = seamOnRight ? (large, seam) : (seam, large)
+            return DuoFrameCornerRadii(topLeft: left, topRight: right, bottomLeft: left, bottomRight: right)
         case .outerLandscape:
             // Landscape is the portrait device rotated: controls-right is 90° clockwise (the left-edge hinge lands on
             // top), controls-left is 90° anticlockwise (the hinge lands on the bottom).

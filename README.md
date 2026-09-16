@@ -47,13 +47,13 @@ Debug chrome lives in a separate passthrough window above it.
 - **Split-view companion** (inner Split View half): draws the *other* app as a gradient placeholder pane on
   the opposite side, with a gutter between the panes. The app sits on the same side as its side controls (each
   app keeps its controls on its outer edge), and both flip when you change the edge.
-- **Per-corner rounding** matches the fixed physical device corners (not the control side). A corner blends the
-  roundedness of the two edges meeting there — a free edge rounds full, the hinge edge reads squarer. Inner
-  (either orientation, no split) rounds all four corners equally at the large radius; a split pane rounds hard
-  on its outer corners and tight against the divider; outer portrait rounds the camera/control edge more than
-  the hinge edge opposite it. Outer landscape is the portrait device rotated — controls-right is 90° clockwise
-  (hinge, so the squarer corners, on top), controls-left is 90° anticlockwise (hinge on the bottom). Radii live
-  in `DuoFrameCornerRadii`.
+- **Per-corner rounding** matches the fixed physical device corners (not the control side). Three radii cover it:
+  the device exterior, a Split View pane's seam against the divider, and the outer display's hinge. Inner
+  (either orientation, no split) rounds all four corners equally at the large radius; a split pane rounds full
+  on its outer corners and at the seam radius against the divider; outer portrait rounds the camera/control edge
+  more than the hinge edge opposite it. Outer landscape is the portrait device rotated — controls-right is 90°
+  clockwise (hinge, so the squarer corners, on top), controls-left is 90° anticlockwise (hinge on the bottom).
+  Radii live in `DuoFrameCornerRadii`.
 - **Camera cutout** is fixed to the hardware and rotates with the device: top of the strip in outer portrait;
   in outer landscape it follows the rotation — bottom of the strip with the controls on the right, top with
   them on the left. The inner display's camera is under-display, so there is no cutout. The strip's own items

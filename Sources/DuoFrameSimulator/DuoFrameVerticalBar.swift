@@ -59,7 +59,15 @@ final class DuoFrameVerticalBar: UIView {
     private weak var hiddenNavigationBarController: UINavigationController?
     private weak var hiddenToolbarController: UINavigationController?
     private var refreshTimer: Timer?
+    private var colourTimer: Timer?
     private var contentSignature = ""
+    private var clockPrefersDark: Bool?
+    private var networkPrefersDark: Bool?
+
+    /// How often the clock and network glyphs re-sample the content beneath them. Faster tracks scrolling more closely
+    /// but each tick renders the app content, so it trades against CPU.
+    private static let colourSampleInterval: TimeInterval = 0.12
+    fileprivate static let darkForegroundLuminance: CGFloat = 0.6
 
     private let camera = UIView()
     private let clock = UILabel()
@@ -131,6 +139,7 @@ final class DuoFrameVerticalBar: UIView {
 
     deinit {
         refreshTimer?.invalidate()
+        colourTimer?.invalidate()
     }
 
     // MARK: - Attaching
@@ -150,6 +159,15 @@ final class DuoFrameVerticalBar: UIView {
                 self?.refresh()
             }
         }
+        if colourTimer == nil {
+            // In `.common` modes so it keeps firing while a finger is down and the run loop is tracking a scroll —
+            // a default-mode timer pauses there, freezing the glyph colour mid-scroll.
+            let timer = Timer(timeInterval: Self.colourSampleInterval, repeats: true) { [weak self] _ in
+                self?.sampleStatusColours()
+            }
+            RunLoop.main.add(timer, forMode: .common)
+            colourTimer = timer
+        }
     }
 
     func detach() {
@@ -158,6 +176,10 @@ final class DuoFrameVerticalBar: UIView {
         hostView = nil
         refreshTimer?.invalidate()
         refreshTimer = nil
+        colourTimer?.invalidate()
+        colourTimer = nil
+        clockPrefersDark = nil
+        networkPrefersDark = nil
         restoreBars(keepingTabBar: nil, navigationBar: nil, toolbar: nil)
         contentSignature = ""
         removeFromSuperview()
@@ -196,6 +218,74 @@ final class DuoFrameVerticalBar: UIView {
             top = presented
         }
         return top
+    }
+
+    // MARK: - Adaptive glyph colour
+
+    /// The real status bar picks a dark or light foreground per region from the content beneath it. This mirrors that:
+    /// it samples the app content under the clock and under the network glyph separately and flips each to black or
+    /// white. Both glyphs sit near the top of the strip, so one render of the app content covers them and each is
+    /// averaged from its own sub-rect.
+    private func sampleStatusColours() {
+        guard isAttached, window != nil, let appWindow = root?.view.window else { return }
+        let clockRegion = clock.convert(clock.bounds, to: appWindow).integral
+        let networkRegion = network.convert(network.bounds, to: appWindow).integral
+        let union = clockRegion.union(networkRegion).intersection(appWindow.bounds)
+        guard !union.isNull, union.width >= 1, union.height >= 1,
+              let snapshot = Self.snapshot(of: appWindow, region: union)?.cgImage else { return }
+
+        let clockSub = clockRegion.offsetBy(dx: -union.minX, dy: -union.minY)
+        let networkSub = networkRegion.offsetBy(dx: -union.minX, dy: -union.minY)
+        if let colour = Self.averageColour(of: snapshot, subRect: clockSub) {
+            applyClockForeground(dark: colour.duoPrefersDarkForeground)
+        }
+        if let colour = Self.averageColour(of: snapshot, subRect: networkSub) {
+            applyNetworkForeground(dark: colour.duoPrefersDarkForeground)
+        }
+    }
+
+    /// Crossfade a glyph's foreground only when the resolved black/white choice actually flips, so the fade fires on a
+    /// real change rather than every sample.
+    private func applyClockForeground(dark: Bool) {
+        guard clockPrefersDark != dark else { return }
+        clockPrefersDark = dark
+        UIView.transition(with: clock, duration: 0.25, options: [.transitionCrossDissolve, .allowUserInteraction]) {
+            self.clock.textColor = dark ? .black : .white
+        }
+    }
+
+    private func applyNetworkForeground(dark: Bool) {
+        guard networkPrefersDark != dark else { return }
+        networkPrefersDark = dark
+        UIView.transition(with: network, duration: 0.25, options: [.transitionCrossDissolve, .allowUserInteraction]) {
+            self.network.foregroundColor = dark ? .black : .white
+        }
+    }
+
+    /// Renders just `region` of the view's own (untransformed) hierarchy. `afterScreenUpdates: false` reuses the last
+    /// rendered frame, which is cheap and fine for sampling.
+    private static func snapshot(of view: UIView, region: CGRect) -> UIImage? {
+        let format = UIGraphicsImageRendererFormat.preferred()
+        format.scale = 1
+        return UIGraphicsImageRenderer(bounds: region, format: format).image { _ in
+            view.drawHierarchy(in: view.bounds, afterScreenUpdates: false)
+        }
+    }
+
+    /// Averages `subRect` (in image points, scale 1) by drawing it into a single pixel and reading it back.
+    private static func averageColour(of image: CGImage, subRect: CGRect) -> UIColor? {
+        let pixels = subRect.integral.intersection(CGRect(x: 0, y: 0, width: image.width, height: image.height))
+        guard pixels.width >= 1, pixels.height >= 1, let crop = image.cropping(to: pixels) else { return nil }
+        var rgba: [UInt8] = [0, 0, 0, 0]
+        guard let context = CGContext(
+            data: &rgba, width: 1, height: 1, bitsPerComponent: 8, bytesPerRow: 4,
+            space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        ) else { return nil }
+        context.interpolationQuality = .medium
+        context.draw(crop, in: CGRect(x: 0, y: 0, width: 1, height: 1))
+        return UIColor(
+            red: CGFloat(rgba[0]) / 255, green: CGFloat(rgba[1]) / 255, blue: CGFloat(rgba[2]) / 255, alpha: 1
+        )
     }
 
     /// Container controllers whose views are on screen, in hierarchy order, so the last navigation controller is the
@@ -288,10 +378,8 @@ final class DuoFrameVerticalBar: UIView {
             "\(selectedIndex)"
         ].joined(separator: "|")
         guard signature != contentSignature else { return }
+        let isFirstBuild = contentSignature.isEmpty
         contentSignature = signature
-
-        topStack.arrangedSubviews.forEach { $0.removeFromSuperview() }
-        bottomStack.arrangedSubviews.forEach { $0.removeFromSuperview() }
 
         var topCounts = [showsBack ? 1 : 0, leading.count, trailing.count].filter { $0 > 0 }
         let bottomCounts = [toolbar.count, tabs.count].filter { $0 > 0 }
@@ -303,23 +391,39 @@ final class DuoFrameVerticalBar: UIView {
             topCounts = [showsBack ? 1 : 0, 1].filter { $0 > 0 }
         }
 
-        if showsBack {
-            topStack.addArrangedSubview(makeGroup([makeBackButton()]))
-        }
-        if overflows {
-            topStack.addArrangedSubview(makeGroup([makeOverflowButton(items: leading + trailing)]))
-        } else {
-            if !leading.isEmpty { topStack.addArrangedSubview(makeGroup(leading.map(makeItemView))) }
-            if !trailing.isEmpty { topStack.addArrangedSubview(makeGroup(trailing.map(makeItemView))) }
-        }
-        if !toolbar.isEmpty {
-            bottomStack.addArrangedSubview(makeGroup(toolbar.map(makeItemView)))
-        }
-        if !tabs.isEmpty {
-            let buttons = tabs.enumerated().map { index, item in
-                makeTabButton(index: index, item: item, selected: index == selectedIndex)
+        let rebuildStacks = { [self] in
+            topStack.arrangedSubviews.forEach { $0.removeFromSuperview() }
+            bottomStack.arrangedSubviews.forEach { $0.removeFromSuperview() }
+
+            if showsBack {
+                topStack.addArrangedSubview(makeGroup([makeBackButton()]))
             }
-            bottomStack.addArrangedSubview(makeGroup(buttons))
+            if overflows {
+                topStack.addArrangedSubview(makeGroup([makeOverflowButton(items: leading + trailing)]))
+            } else {
+                if !leading.isEmpty { topStack.addArrangedSubview(makeGroup(leading.map(makeItemView))) }
+                if !trailing.isEmpty { topStack.addArrangedSubview(makeGroup(trailing.map(makeItemView))) }
+            }
+            if !toolbar.isEmpty {
+                bottomStack.addArrangedSubview(makeGroup(toolbar.map(makeItemView)))
+            }
+            if !tabs.isEmpty {
+                let buttons = tabs.enumerated().map { index, item in
+                    makeTabButton(index: index, item: item, selected: index == selectedIndex)
+                }
+                bottomStack.addArrangedSubview(makeGroup(buttons))
+            }
+        }
+
+        // Crossfade item changes — a cover hiding the tabs, a pushed back button, a tab selection. The first build has
+        // nothing to fade from, so it's set directly.
+        if isFirstBuild {
+            rebuildStacks()
+        } else {
+            UIView.transition(
+                with: self, duration: 0.2,
+                options: [.transitionCrossDissolve, .allowUserInteraction], animations: rebuildStacks
+            )
         }
     }
 
@@ -594,6 +698,14 @@ private final class DuoFrameCentringBox: UIView {
 /// The Duo status bar's combined Wi‑Fi and cellular glyph: a ring open at the bottom, Wi‑Fi inside, signal dots below.
 private final class DuoFrameNetworkGlyph: UIView {
 
+    var foregroundColor: UIColor = .label {
+        didSet {
+            guard foregroundColor != oldValue else { return }
+            wifi.tintColor = foregroundColor
+            setNeedsDisplay()
+        }
+    }
+
     private static let wifiConfiguration = UIImage.SymbolConfiguration(pointSize: 12, weight: .semibold)
     private let wifi = UIImageView(image: UIImage(systemName: "wifi", withConfiguration: wifiConfiguration))
 
@@ -601,7 +713,7 @@ private final class DuoFrameNetworkGlyph: UIView {
         super.init(frame: frame)
         backgroundColor = .clear
         isOpaque = false
-        wifi.tintColor = .label
+        wifi.tintColor = foregroundColor
         wifi.contentMode = .center
         addSubview(wifi)
     }
@@ -617,8 +729,8 @@ private final class DuoFrameNetworkGlyph: UIView {
     }
 
     override func draw(_ rect: CGRect) {
-        UIColor.label.setStroke()
-        UIColor.label.setFill()
+        foregroundColor.setStroke()
+        foregroundColor.setFill()
         let centre = CGPoint(x: bounds.midX, y: 17)
         let ring = UIBezierPath(
             arcCenter: centre, radius: 15, startAngle: 2 * .pi / 3, endAngle: .pi / 3, clockwise: true
@@ -631,6 +743,17 @@ private final class DuoFrameNetworkGlyph: UIView {
             let dot = CGPoint(x: centre.x + 19 * cos(angle), y: centre.y + 19 * sin(angle))
             UIBezierPath(ovalIn: CGRect(x: dot.x - 1.4, y: dot.y - 1.4, width: 2.8, height: 2.8)).fill()
         }
+    }
+}
+
+private extension UIColor {
+    /// True on a light background (wanting a black foreground), false on a dark one — from relative luminance, as the
+    /// status bar picks a legible foreground for the content beneath it.
+    var duoPrefersDarkForeground: Bool {
+        var red: CGFloat = 0, green: CGFloat = 0, blue: CGFloat = 0, alpha: CGFloat = 0
+        getRed(&red, green: &green, blue: &blue, alpha: &alpha)
+        let luminance = 0.2126 * red + 0.7152 * green + 0.0722 * blue
+        return luminance > DuoFrameVerticalBar.darkForegroundLuminance
     }
 }
 #endif

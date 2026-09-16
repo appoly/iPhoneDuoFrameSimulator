@@ -6,22 +6,25 @@
 //
 
 #if DEBUG
-import UIKit
+import SwiftUI
 
-/// Per-corner radii for a pane, in the Duo's own point space. Corners against the physical device's outer corners
-/// round more; corners along a fold seam or hinge round less. The exact radii are unpublished, so these are
-/// placeholders — only the asymmetry is meant to be faithful.
+/// Per-corner radii for a pane, in the Duo's own point space, drawn as continuous corners like the hardware. Corners
+/// against the physical device's outer corners round more; corners along a fold seam or hinge round less. The exact
+/// radii are unpublished, so these are placeholders — only the asymmetry is meant to be faithful.
 struct DuoFrameCornerRadii: Equatable {
     var topLeft: CGFloat
     var topRight: CGFloat
     var bottomLeft: CGFloat
     var bottomRight: CGFloat
 
-    static let large: CGFloat = 46
+    /// Extrapolated from the camera cutout: the exterior corner's curve appears to run out level with the cutout's
+    /// bottom edge, 66 pt (28 inset + 38 diameter) along the edge. A continuous corner straightens out about 1.53
+    /// radii along each edge, so the radius is 66 / 1.53.
+    static let large: CGFloat = 43
     static let small: CGFloat = 8
     /// The outer display's hinge edge is a hard fold, so its corners are nearly square — squarer than the blended
     /// seam of an inner Split View pane.
-    static let outerHinge: CGFloat = 8
+    static let outerHinge: CGFloat = 6
 
     /// Blends each corner from the roundedness of the two edges meeting there (0 = seam/hinge, 1 = device exterior).
     private static func blend(_ edgeA: CGFloat, _ edgeB: CGFloat) -> CGFloat {
@@ -35,37 +38,14 @@ struct DuoFrameCornerRadii: Equatable {
         )
     }
 
-    /// A rounded-rect path honouring all four radii independently. Circular arcs; each radius is clamped to the rect.
+    /// A rounded-rect path honouring all four radii independently, drawn with the system's continuous corner curve
+    /// (the hardware shape) rather than circular arcs. Leading is left: the path is built outside any layout
+    /// direction, so it is never mirrored.
     func path(in rect: CGRect) -> CGPath {
-        let limit = min(rect.width, rect.height) / 2
-        let radTL = min(topLeft, limit)
-        let radTR = min(topRight, limit)
-        let radBL = min(bottomLeft, limit)
-        let radBR = min(bottomRight, limit)
-        let path = UIBezierPath()
-        path.move(to: CGPoint(x: rect.minX + radTL, y: rect.minY))
-        path.addLine(to: CGPoint(x: rect.maxX - radTR, y: rect.minY))
-        path.addArc(
-            withCenter: CGPoint(x: rect.maxX - radTR, y: rect.minY + radTR), radius: radTR,
-            startAngle: -.pi / 2, endAngle: 0, clockwise: true
+        let radii = RectangleCornerRadii(
+            topLeading: topLeft, bottomLeading: bottomLeft, bottomTrailing: bottomRight, topTrailing: topRight
         )
-        path.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY - radBR))
-        path.addArc(
-            withCenter: CGPoint(x: rect.maxX - radBR, y: rect.maxY - radBR), radius: radBR,
-            startAngle: 0, endAngle: .pi / 2, clockwise: true
-        )
-        path.addLine(to: CGPoint(x: rect.minX + radBL, y: rect.maxY))
-        path.addArc(
-            withCenter: CGPoint(x: rect.minX + radBL, y: rect.maxY - radBL), radius: radBL,
-            startAngle: .pi / 2, endAngle: .pi, clockwise: true
-        )
-        path.addLine(to: CGPoint(x: rect.minX, y: rect.minY + radTL))
-        path.addArc(
-            withCenter: CGPoint(x: rect.minX + radTL, y: rect.minY + radTL), radius: radTL,
-            startAngle: .pi, endAngle: .pi * 3 / 2, clockwise: true
-        )
-        path.close()
-        return path.cgPath
+        return UnevenRoundedRectangle(cornerRadii: radii, style: .continuous).path(in: rect).cgPath
     }
 
     /// Per-edge roundedness (0…1) for a pane, then the four corners blended from it.

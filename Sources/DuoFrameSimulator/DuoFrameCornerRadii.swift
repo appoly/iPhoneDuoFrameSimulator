@@ -19,6 +19,9 @@ struct DuoFrameCornerRadii: Equatable {
 
     static let large: CGFloat = 46
     static let small: CGFloat = 8
+    /// The outer display's hinge edge is a hard fold, so its corners are nearly square — squarer than the blended
+    /// seam of an inner Split View pane.
+    static let outerHinge: CGFloat = 8
 
     /// Blends each corner from the roundedness of the two edges meeting there (0 = seam/hinge, 1 = device exterior).
     private static func blend(_ edgeA: CGFloat, _ edgeB: CGFloat) -> CGFloat {
@@ -70,31 +73,46 @@ struct DuoFrameCornerRadii: Equatable {
     /// - `isCompanion`: the placeholder pane opposite the app in Split View, whose seam faces the app.
     static func forPane(preset: DuoFramePreset, edge: DuoFrameSideEdge?, isCompanion: Bool) -> DuoFrameCornerRadii {
         let controlsOnRight = (edge ?? .right).isRight
-        var top: CGFloat = 1, bottom: CGFloat = 1, left: CGFloat = 1, right: CGFloat = 1
 
         // Corners follow the fixed physical screen shape: the hinge edge reads squarer, every free edge rounds full.
         // The camera and controls don't affect them. Reference: closed portrait folds along the left edge; rotating
         // the device places that hinge on a different screen edge in each pose.
         switch preset {
         case .innerLandscape, .innerPortrait, .otherDevice, .off:
-            break   // a whole inner display (or an arbitrary size): every corner is a device corner
+            return DuoFrameCornerRadii(uniform: large)   // a whole inner display (or an arbitrary size)
         case .innerSplitHalf:
             // The seam is the pane's inner edge: opposite the app's controls, and the mirror of that for the companion.
+            // It reads as a softly-blended corner, not a hard hinge.
             let seamOnRight = isCompanion ? controlsOnRight : !controlsOnRight
-            if seamOnRight { right = 0 } else { left = 0 }
+            let (left, right): (CGFloat, CGFloat) = seamOnRight ? (1, 0) : (0, 1)
+            return DuoFrameCornerRadii(
+                topLeft: blend(1, left), topRight: blend(1, right),
+                bottomLeft: blend(1, left), bottomRight: blend(1, right)
+            )
         case .outerLandscape:
             // Landscape is the portrait device rotated: controls-right is 90° clockwise (the left-edge hinge lands on
             // top), controls-left is 90° anticlockwise (the hinge lands on the bottom).
-            if controlsOnRight { top = 0 } else { bottom = 0 }
+            return controlsOnRight ? outer(hinge: .top) : outer(hinge: .bottom)
         case .outerPortrait:
             // Closed portrait folds along the edge opposite the controls (the controls sit by the camera).
-            if controlsOnRight { left = 0 } else { right = 0 }
+            return controlsOnRight ? outer(hinge: .left) : outer(hinge: .right)
         }
+    }
 
-        return DuoFrameCornerRadii(
-            topLeft: blend(top, left), topRight: blend(top, right),
-            bottomLeft: blend(bottom, left), bottomRight: blend(bottom, right)
-        )
+    private enum Edge { case top, bottom, left, right }
+
+    /// The outer display: a hard, near-square hinge edge and three fully-rounded physical edges.
+    private static func outer(hinge: Edge) -> DuoFrameCornerRadii {
+        switch hinge {
+        case .top:
+            DuoFrameCornerRadii(topLeft: outerHinge, topRight: outerHinge, bottomLeft: large, bottomRight: large)
+        case .bottom:
+            DuoFrameCornerRadii(topLeft: large, topRight: large, bottomLeft: outerHinge, bottomRight: outerHinge)
+        case .left:
+            DuoFrameCornerRadii(topLeft: outerHinge, topRight: large, bottomLeft: outerHinge, bottomRight: large)
+        case .right:
+            DuoFrameCornerRadii(topLeft: large, topRight: outerHinge, bottomLeft: large, bottomRight: outerHinge)
+        }
     }
 }
 

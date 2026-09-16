@@ -193,6 +193,12 @@ final class DuoFrameMenuButton: UIButton {
                         : "Needs a pose with side controls and an edge",
                     keyPath: \.simulatesVerticalBars,
                     enabled: hasSideEdge
+                ),
+                toggle(
+                    "Adapt status glyph colours",
+                    subtitle: "Samples content under the clock/network to flip black·white; costs CPU",
+                    keyPath: \.adaptsStatusColours,
+                    enabled: hasSideEdge && settings.simulatesVerticalBars
                 )
             ]
         )

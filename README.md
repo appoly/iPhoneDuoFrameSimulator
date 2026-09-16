@@ -98,6 +98,11 @@ Every pose puts the controls on the side **except the inner display in portrait*
 bars — the one HIG exception. So with vertical bars on: outer portrait/landscape, inner landscape and the
 inner Split View half draw the side strip; inner portrait leaves the real horizontal bars alone.
 
+The strip's clock and network glyphs adapt from black to white against the content beneath them, sampled a
+few times a second — and each sample re-renders the app content, so it's the strip's one recurring cost.
+**Adapt status glyph colours** (Options toggle, on by default) turns that sampling off; the glyphs then stay
+`.label`. Turn it off if the strip is costing you frames and you don't need the adaptive colour.
+
 ### Driving the tabs
 
 Tapping a re-homed tab drives the real selection, including through SwiftUI's native `TabView` — `selectTab`

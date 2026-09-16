@@ -338,6 +338,7 @@ final class DuoFrameViewController: UIViewController {
         if verticalBar.superview == nil {
             verticalBar.attach(to: root, in: chrome.view)
         }
+        verticalBar.setColourAdaptation(settings.adaptsStatusColours)
         verticalBar.transform = .identity
         verticalBar.bounds = CGRect(x: 0, y: 0, width: DuoFrameVerticalBar.width, height: geometry.layoutSize.height)
         verticalBar.transform = CGAffineTransform(scaleX: contentScale, y: contentScale)

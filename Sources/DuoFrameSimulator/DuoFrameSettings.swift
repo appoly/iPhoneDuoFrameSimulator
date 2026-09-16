@@ -153,6 +153,10 @@ struct DuoFrameSettings: Codable, Equatable {
     var reportsPhoneIdiom = false
     var matchesPhysicalDensity = false
     var simulatesVerticalBars = true
+    /// Whether the side strip's clock and network glyphs sample the content beneath them to flip black/white. Each
+    /// sample re-renders the app content, so it carries a recurring CPU cost; off by default, and the glyphs then
+    /// stay `.label`.
+    var adaptsStatusColours = false
     var displayZoom = false
     /// Swizzles `UIScreen.bounds` to the frame's layout size. Off by default: UIKit sizes its own windows (keyboard,
     /// alerts) from it too, so a mismatch with the real window can misplace those.

@@ -159,15 +159,39 @@ final class DuoFrameVerticalBar: UIView {
                 self?.refresh()
             }
         }
-        if colourTimer == nil {
-            // In `.common` modes so it keeps firing while a finger is down and the run loop is tracking a scroll —
-            // a default-mode timer pauses there, freezing the glyph colour mid-scroll.
-            let timer = Timer(timeInterval: Self.colourSampleInterval, repeats: true) { [weak self] _ in
-                self?.sampleStatusColours()
-            }
-            RunLoop.main.add(timer, forMode: .common)
-            colourTimer = timer
+    }
+
+    // MARK: - Colour adaptation
+
+    /// Turns the clock/network colour sampling on or off. Reconciled from the current setting on every layout update,
+    /// so it applies live: enabling starts the sampling timer, disabling stops it and returns the glyphs to `.label`.
+    func setColourAdaptation(_ enabled: Bool) {
+        guard isAttached else { return }
+        if enabled {
+            startColourSampling()
+        } else {
+            stopColourSampling()
         }
+    }
+
+    private func startColourSampling() {
+        guard colourTimer == nil else { return }
+        // In `.common` modes so it keeps firing while a finger is down and the run loop is tracking a scroll —
+        // a default-mode timer pauses there, freezing the glyph colour mid-scroll.
+        let timer = Timer(timeInterval: Self.colourSampleInterval, repeats: true) { [weak self] _ in
+            self?.sampleStatusColours()
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        colourTimer = timer
+    }
+
+    private func stopColourSampling() {
+        colourTimer?.invalidate()
+        colourTimer = nil
+        clockPrefersDark = nil
+        networkPrefersDark = nil
+        clock.textColor = .label
+        network.foregroundColor = .label
     }
 
     func detach() {

@@ -52,6 +52,7 @@ final class DuoFrameVerticalBar: UIView {
 
     private(set) var isAttached = false
     private weak var root: UIViewController?
+    private weak var hostView: UIView?
     private weak var tabBarController: UITabBarController?
     private weak var navigationController: UINavigationController?
     private weak var hiddenTabBarController: UITabBarController?
@@ -134,13 +135,15 @@ final class DuoFrameVerticalBar: UIView {
 
     // MARK: - Attaching
 
-    func attach(to root: UIViewController) {
+    /// `root` is the controller whose real nav/tab bars this drives; `host` is the view it draws in. The host is the
+    /// overlay chrome window's view, above the app window, so the strip stays visible over a full-screen presentation.
+    /// The caller sizes and transforms the bar to sit over the framed content's controls edge.
+    func attach(to root: UIViewController, in host: UIView) {
         self.root = root
+        self.hostView = host
         isAttached = true
         isHidden = false
-        // Live inside the hosted content so the fold's point space, the content transform, hit-testing and
-        // accessibility frames are all shared — a separate transform on a sibling breaks the last two.
-        root.view.addSubview(self)
+        host.insertSubview(self, at: 0)
         refresh()
         if refreshTimer == nil {
             refreshTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
@@ -152,6 +155,7 @@ final class DuoFrameVerticalBar: UIView {
     func detach() {
         guard isAttached else { return }
         isAttached = false
+        hostView = nil
         refreshTimer?.invalidate()
         refreshTimer = nil
         restoreBars(keepingTabBar: nil, navigationBar: nil, toolbar: nil)
@@ -163,10 +167,8 @@ final class DuoFrameVerticalBar: UIView {
     /// bar on its own updates, so this polls rather than trusting a one-off setup.
     private func refresh() {
         guard isAttached, let root else { return }
-        if superview !== root.view {
-            root.view.addSubview(self)
-        } else {
-            root.view.bringSubviewToFront(self)
+        if let host = hostView, superview !== host {
+            host.insertSubview(self, at: 0)
         }
         let time = clockFormatter.string(from: .now).trimmingCharacters(in: .whitespaces)
         if clock.text != time {
@@ -174,15 +176,30 @@ final class DuoFrameVerticalBar: UIView {
             setNeedsLayout()   // re-size and re-centre the label for the new value
         }
 
-        let containers = Self.onScreenContainers(in: root)
+        // Follow the frontmost full-screen presentation: on a Duo a full-screen cover replaces the display, so the
+        // strip reflects the cover's own bars (its tabs, its navigation), not the app's underneath. A sheet is a
+        // shaped surface that keeps its own bars, so the walk stops before it.
+        let containers = Self.onScreenContainers(in: Self.frontmostFullScreen(from: root))
         tabBarController = containers.lazy.compactMap { $0 as? UITabBarController }.first
         navigationController = containers.reversed().lazy.compactMap { $0 as? UINavigationController }.first
         hideBars()
         rebuildIfNeeded()
     }
 
+    /// The deepest full-screen presentation above `controller`, or `controller` itself when nothing full-screen is
+    /// presented. Sheets and popovers stop the walk.
+    private static func frontmostFullScreen(from controller: UIViewController) -> UIViewController {
+        var top = controller
+        while let presented = top.presentedViewController,
+              !presented.isBeingDismissed,
+              presented.duoFrameIsFullScreenPresentation {
+            top = presented
+        }
+        return top
+    }
+
     /// Container controllers whose views are on screen, in hierarchy order, so the last navigation controller is the
-    /// one driving the visible screen. Presented sheets keep their own bars and are not visited.
+    /// one driving the visible screen.
     private static func onScreenContainers(in controller: UIViewController) -> [UIViewController] {
         guard controller.isViewLoaded, controller.view.window != nil else { return [] }
         var result: [UIViewController] = []

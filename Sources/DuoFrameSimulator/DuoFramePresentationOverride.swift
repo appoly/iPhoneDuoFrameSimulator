@@ -45,15 +45,19 @@ private extension UIViewController {
         duoFramePresent(viewControllerToPresent, animated: animated, completion: completion)   // the original
         guard let window = DuoFramePresentationOverride.framedWindow,
               view.window === window,
-              viewControllerToPresent.duoFrameTakesFakedInsets else { return }
+              viewControllerToPresent.duoFrameIsFullScreenPresentation else { return }
         let insets = DuoFramePresentationOverride.additionalInsets
         if viewControllerToPresent.additionalSafeAreaInsets != insets {
             viewControllerToPresent.additionalSafeAreaInsets = insets
         }
     }
+}
 
-    /// Only full-screen styles: a sheet or popover is a shaped surface that shouldn't be inset.
-    var duoFrameTakesFakedInsets: Bool {
+extension UIViewController {
+    /// True for a full-screen presentation style, false for a sheet or popover. A full-screen cover replaces the whole
+    /// display, so on a Duo its bars move to the side strip and it takes the faked insets; a sheet is a shaped surface
+    /// that keeps its own bars and shape.
+    var duoFrameIsFullScreenPresentation: Bool {
         switch modalPresentationStyle {
         case .fullScreen, .overFullScreen, .currentContext, .overCurrentContext: true
         default: false

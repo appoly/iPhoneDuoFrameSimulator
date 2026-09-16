@@ -114,11 +114,7 @@ final class DuoFrameViewController: UIViewController {
         applyTraitOverrides()
         applyScreenOverrides()
         verticalBar.cameraPlacement = cameraPlacement(for: settings.geometry)
-        if settings.simulatesVerticalBars, settings.geometry?.sideEdge != nil {
-            verticalBar.attach(to: root)
-        } else {
-            verticalBar.detach()
-        }
+        // The bar is attached and positioned in `frameWindow`, once the overlay window that hosts it exists.
         frameWindow()
     }
 
@@ -198,7 +194,7 @@ final class DuoFrameViewController: UIViewController {
             if root.additionalSafeAreaInsets != host { root.additionalSafeAreaInsets = host }
             DuoFramePresentationOverride.framedWindow = nil
             chrome.clear()
-            verticalBar.isHidden = true
+            verticalBar.detach()
             appliedScale = 1
             return
         }
@@ -220,7 +216,6 @@ final class DuoFrameViewController: UIViewController {
         } else {
             frameSingle(window: window, geometry: geometry, metrics: metrics)
         }
-        verticalBar.isHidden = false
     }
 
     private struct FrameMetrics {
@@ -238,7 +233,7 @@ final class DuoFrameViewController: UIViewController {
             outline: footprint, radii: geometry.cornerRadii.scaled(metrics.scale),
             caption: statusSummary(scale: metrics.contentScale), companion: nil, companionRadii: nil
         )
-        verticalBar.frame = verticalBarStrip(for: geometry)
+        updateVerticalBar(geometry: geometry, footprint: footprint, contentScale: metrics.contentScale)
     }
 
     private func frameSplit(window: UIWindow, geometry: DuoFrameGeometry, stage: CGSize, metrics: FrameMetrics) {
@@ -266,7 +261,7 @@ final class DuoFrameViewController: UIViewController {
             outline: appPane, radii: geometry.cornerRadii.scaled(scale),
             caption: statusSummary(scale: metrics.contentScale), companion: companion, companionRadii: companionRadii
         )
-        verticalBar.frame = verticalBarStrip(for: geometry)
+        updateVerticalBar(geometry: geometry, footprint: appPane, contentScale: metrics.contentScale)
     }
 
     /// Sizes the app window to the footprint. The window's bounds are the (zoomed) layout size, a scale transform
@@ -331,17 +326,24 @@ final class DuoFrameViewController: UIViewController {
         )
     }
 
-    /// The bar is a child of `root.view`, so it works in that view's point space — which is the Display-Zoom layout
-    /// size (the window's bounds), not the nominal device size.
-    private func verticalBarStrip(for geometry: DuoFrameGeometry) -> CGRect {
-        guard let edge = geometry.sideEdge else { return .zero }
-        let bounds = root.view.bounds
-        return CGRect(
-            x: edge.isRight ? bounds.width - DuoFrameVerticalBar.width : 0,
-            y: 0,
-            width: DuoFrameVerticalBar.width,
-            height: bounds.height
-        )
+    /// The bar lives in the overlay chrome window, above the app window, so it stays visible over a full-screen
+    /// presentation. It's laid out in the content's point space (bounds in layout points, so its internal metrics match
+    /// the framed content), then scaled by the content scale and centred on the footprint's controls edge in screen
+    /// points.
+    private func updateVerticalBar(geometry: DuoFrameGeometry, footprint: CGRect, contentScale: CGFloat) {
+        guard settings.simulatesVerticalBars, let edge = geometry.sideEdge else {
+            verticalBar.detach()
+            return
+        }
+        if verticalBar.superview == nil {
+            verticalBar.attach(to: root, in: chrome.view)
+        }
+        verticalBar.transform = .identity
+        verticalBar.bounds = CGRect(x: 0, y: 0, width: DuoFrameVerticalBar.width, height: geometry.layoutSize.height)
+        verticalBar.transform = CGAffineTransform(scaleX: contentScale, y: contentScale)
+        let stripWidth = DuoFrameVerticalBar.width * contentScale
+        let centreX = edge.isRight ? footprint.maxX - stripWidth / 2 : footprint.minX + stripWidth / 2
+        verticalBar.center = CGPoint(x: centreX, y: footprint.midY)
     }
 
     private func paneRect(size: CGSize, scale: CGFloat, centre: CGPoint) -> CGRect {

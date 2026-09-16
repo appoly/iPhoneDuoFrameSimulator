@@ -196,6 +196,7 @@ final class DuoFrameViewController: UIViewController {
             resetWindow(window, to: arena)
             let host = view.safeAreaInsets
             if root.additionalSafeAreaInsets != host { root.additionalSafeAreaInsets = host }
+            DuoFramePresentationOverride.framedWindow = nil
             chrome.clear()
             verticalBar.isHidden = true
             appliedScale = 1
@@ -314,6 +315,20 @@ final class DuoFrameViewController: UIViewController {
         if root.additionalSafeAreaInsets != additional {
             root.additionalSafeAreaInsets = additional
         }
+        publishPresentationInsets(desired: additional)
+    }
+
+    /// A full-screen presentation can't be shielded, so it inherits the window's real insets. Hand it the shortfall up
+    /// to the faked total, per edge — chiefly the side-controls strip, which the window reports nothing for.
+    private func publishPresentationInsets(desired: UIEdgeInsets) {
+        let host = view.safeAreaInsets
+        DuoFramePresentationOverride.framedWindow = view.window
+        DuoFramePresentationOverride.additionalInsets = UIEdgeInsets(
+            top: max(0, desired.top - host.top),
+            left: max(0, desired.left - host.left),
+            bottom: max(0, desired.bottom - host.bottom),
+            right: max(0, desired.right - host.right)
+        )
     }
 
     /// The bar is a child of `root.view`, so it works in that view's point space — which is the Display-Zoom layout

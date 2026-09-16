@@ -27,6 +27,7 @@ public enum DuoFrameSimulator {
         isInstalled = true
         showsButtonByDefault = showsButton
         DuoFrameScreenOverride.install()
+        DuoFramePresentationOverride.install()
         for name in [UIWindow.didBecomeVisibleNotification, UIWindow.didBecomeKeyNotification] {
             NotificationCenter.default.addObserver(forName: name, object: nil, queue: .main) { notification in
                 guard let window = notification.object as? UIWindow else { return }

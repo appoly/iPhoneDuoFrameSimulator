@@ -84,10 +84,12 @@ the window, so the child inherits the window's own insets normally.
 - **The keyboard** follows the window, so it should now sit inside the frame; confirm it isn't clipped by the corner
   mask.
 
-**Fit is to the whole physical screen**, not the host's safe area. A frame the same size as the real screen
-renders full-screen at 1:1; a smaller frame renders at true point size, centred with a border; only a frame
-larger than the screen scales below 1 (letterboxing just for an aspect-ratio mismatch). So on an iPhone 17 Pro,
-picking iPhone Pro fills the screen, iPhone SE is a bordered 1:1, and iPhone Pro Max scales down to fit.
+**Fit is to the whole scene**, not the host's safe area. On iPhone the scene is the physical screen; on iPad it is
+the window, so the frame follows Split View, Stage Manager and a live window resize. A frame the same size as the
+scene renders at 1:1; a smaller frame renders at true point size, centred with a border; only a frame larger than
+the scene scales below 1 (letterboxing just for an aspect-ratio mismatch). So on an iPhone 17 Pro, picking iPhone
+Pro fills the screen, iPhone SE is a bordered 1:1, and iPhone Pro Max scales down to fit. With framing off the
+window is handed back to UIKit untouched.
 
 Settings persist in `UserDefaults`, so the last preset survives relaunches. Presets can also be forced at
 launch with `-DuoFrameSimulator.settings <base64-json>` (used for scripted screenshots).

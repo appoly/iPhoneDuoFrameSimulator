@@ -34,6 +34,7 @@ final class DuoFrameViewController: UIViewController {
     private var appliedScale: CGFloat = 1
     private var hasAppliedScreenOverrides = false
     private var isFramingWindow = false
+    private var isWindowFramed = false
 
     private static let splitGutter: CGFloat = 14
 
@@ -184,12 +185,16 @@ final class DuoFrameViewController: UIViewController {
         defer { isFramingWindow = false }
         ensureChromeWindow()
 
-        // The real screen, read past the UIScreen.bounds override so the arena is always the true host size.
-        let arena = DuoFrameScreenOverride.hostBounds(of: scene.screen)
+        // The scene, not the screen: on iPad the scene shrinks for Split View, Stage Manager and window resizing,
+        // and UIKit re-lays the window out to match. Framing against the screen would fight that every pass.
+        let arena = scene.coordinateSpace.bounds
         guard let geometry = settings.geometry else {
-            // Off: the shield still zeroes what the root inherits, so hand it the host's real insets to reproduce
-            // normal behaviour.
-            resetWindow(window, to: arena)
+            // Off: hand the window back to UIKit once, then leave it alone so it can follow the scene. The shield
+            // still zeroes what the root inherits, so hand it the host's real insets to reproduce normal behaviour.
+            if isWindowFramed {
+                resetWindow(window, to: arena)
+                isWindowFramed = false
+            }
             let host = view.safeAreaInsets
             if root.additionalSafeAreaInsets != host { root.additionalSafeAreaInsets = host }
             DuoFramePresentationOverride.framedWindow = nil
@@ -210,6 +215,7 @@ final class DuoFrameViewController: UIViewController {
         // contentScale magnifies the zoomed-out layout back to the footprint.
         let metrics = FrameMetrics(arena: arena, scale: scale, contentScale: scale / geometry.zoom)
         appliedScale = metrics.contentScale
+        isWindowFramed = true
 
         if geometry.isSplit {
             frameSplit(window: window, geometry: geometry, stage: stage, metrics: metrics)
@@ -277,7 +283,7 @@ final class DuoFrameViewController: UIViewController {
         setMask(windowMaskLayer, path: geometry.cornerRadii.scaled(geometry.zoom).path(in: bounds), frame: bounds)
     }
 
-    /// Resets the app window to fill the screen with no transform or mask, for the framing-off state.
+    /// Resets the app window to fill the scene with no transform or mask, when framing is switched off.
     private func resetWindow(_ window: UIWindow, to arena: CGRect) {
         if window.bounds.size != arena.size { window.bounds = CGRect(origin: .zero, size: arena.size) }
         window.transform = .identity
@@ -384,8 +390,7 @@ final class DuoFrameViewController: UIViewController {
 
     func statusSummary(scale: CGFloat? = nil) -> String {
         guard let geometry = settings.geometry else {
-            let arena = view.window?.windowScene?.screen ?? UIScreen.main
-            let bounds = DuoFrameScreenOverride.hostBounds(of: arena)
+            let bounds = view.window?.windowScene?.coordinateSpace.bounds ?? .zero
             return "Framing off · host \(Int(bounds.width))×\(Int(bounds.height)) pt"
         }
         let traits = root.traitCollection

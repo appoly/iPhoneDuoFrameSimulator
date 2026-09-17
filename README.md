@@ -1,175 +1,201 @@
-# DuoFrameSimulator
+<h1 align="center">DuoFrameSimulator</h1>
 
-A DEBUG-only tool for previewing an app's layout at **iPhone Duo** display sizes before the Xcode 27.1
-Duo simulator ships. It hosts the app's real root view controller inside a container that pins it to a
-chosen footprint, fakes that display's safe area, and overrides its size classes, all driven from a
-floating menu in the top-right corner of the window.
+<p align="center">
+  Preview your app's layout at <b>iPhone Duo</b> display sizes, today, without waiting for the Xcode 27.1 Duo simulator.
+</p>
 
-It reframes the app by resizing its **window** to the chosen footprint (and scaling the window for Display Zoom),
-so the OS still thinks it's on the host device, but the app — and everything UIKit hangs off the window, including
-`.sheet`, `.fullScreenCover`, alerts and popovers — is handed the size, safe area and traits the Duo would report.
-Debug chrome lives in a separate passthrough window above it.
+<p align="center">
+  <img alt="Platform iOS 17+" src="https://img.shields.io/badge/platform-iOS%2017%2B-blue">
+  <img alt="Swift 5.9" src="https://img.shields.io/badge/Swift-5.9-orange">
+  <img alt="DEBUG-only" src="https://img.shields.io/badge/config-DEBUG--only-lightgrey">
+</p>
 
-## What it does
+<p align="center">
+  <img width="760" alt="The simulator running an app in the Duo Inner Split View half pose, with the presets menu and Options submenu open over the framed window and its Split View companion pane." src="docs/preview.png">
+</p>
 
-- **Presets menu** (top-right, mirroring the window controls Apple puts top-left): the Duo poses (outer/inner,
-  landscape/portrait, an inner Split View half), plus an **Other sizes** submenu of released iPhone form
-  factors (SE through Pro Max) and a custom size — a general "other device" simulator. Other-device frames are
-  plain phones: compact-width, their own safe area and uniform corners, no Duo side controls, so the side-controls
-  option simply doesn't apply to them (the same as the Off pose). Devices live in `DuoDevice`.
-- **Faked safe area** for the side controls / Dynamic Island, on either the left or right edge.
-- **Size-class override** so `NavigationSplitView`, adaptive presentations and any
-  `horizontalSizeClass` checks see compact (outer) or regular (inner).
-- **Physical-density mode** scales the frame so a point renders at the simulated device's real physical size:
-  the host's points per inch over the device's (`DuoDevice.pointsPerInch`; 153 for the Duo and every 460-ppi 3x
-  phone, 163 for the SE and XR, 159 for the mini). The Duo is ×1.07 on an iPad mini, the recommended host, and
-  ×1 on a 3x iPhone; an SE on a 17 Pro shrinks to ×0.94. It never scales above the fit.
-- **Display Zoom** (Options toggle) reproduces both halves of the iOS setting: the app lays out at the device's
-  zoomed point size (e.g. 402×874 → 320×696 on the 6.3" Pro) while keeping the same footprint, so the content is
-  magnified, *and* `UIScreen.nativeScale` is swizzled to report `scale / factor` (3.77 on that Pro), so code that
-  detects zoom via `UIScreen.main.scale / nativeScale` sees the real 0.796 rather than 1. Per-device zoomed widths
-  live in `DuoDevice`; only the 6.3" Pro is measured on-device, the Duo and custom sizes fall back to its factor.
-  Toggling posts `DuoFrameSimulator.screenMetricsDidChange`; with the optional
-  `duoFrameRebuildOnScreenMetricsChange()` modifier on the root content (see below) the whole SwiftUI tree is given a
-  new identity, so every `body` re-runs with the new metrics. That is the in-app equivalent of the relaunch iOS does
-  for a real Display Zoom change, and it costs the same: navigation and view state reset. Toggle with no sheet
-  presented, since a torn-down presentation can leave app-side presenter state stranded. Anything the app computes
-  once (`static let` sizes) still keeps its pre-toggle value until relaunch.
-- **Override UIScreen.bounds** (Options toggle, off by default) swizzles `UIScreen.bounds` to the frame's layout
-  size so `UIScreen.main.bounds`-based sizing follows the frame. UIKit sizes its own windows (keyboard, alerts) from
-  the same getter, so expect those to misplace when the frame differs from the real screen; flip it off if so.
-- **Vertical-bars mode** (stretch): hides the hosted system bars and draws a Duo-style side column in the
-  strip — a fake Dynamic Island, the clock and the combined Wi-Fi/cellular status glyph at the top (metrics
-  measured off Apple's HIG "Designing for iPhone Duo" screenshots), then the navigation bar's items, then
-  the tab bar's items bottom-aligned, ordered per the HIG. The buttons drive the real controllers (nav/toolbar
-  via target-action, tabs via the tab bar). The controls-edge safe-area inset equals the strip width, so app
-  content that respects the safe area clears the strip.
-- **Split-view companion** (inner Split View half): draws the *other* app as a gradient placeholder pane on
-  the opposite side, with a gutter between the panes. The app sits on the same side as its side controls (each
-  app keeps its controls on its outer edge), and both flip when you change the edge.
-- **Per-corner rounding** matches the fixed physical device corners (not the control side). Three radii cover it:
-  the device exterior, a Split View pane's seam against the divider, and the outer display's hinge. Inner
-  (either orientation, no split) rounds all four corners equally at the large radius; a split pane rounds full
-  on its outer corners and at the seam radius against the divider; outer portrait rounds the camera/control edge
-  more than the hinge edge opposite it. Outer landscape is the portrait device rotated — controls-right is 90°
-  clockwise (hinge, so the squarer corners, on top), controls-left is 90° anticlockwise (hinge on the bottom).
-  Radii live in `DuoFrameCornerRadii`.
-- **Camera cutout** is fixed to the hardware and rotates with the device: top of the strip in outer portrait;
-  in outer landscape it follows the rotation — bottom of the strip with the controls on the right, top with
-  them on the left. The inner display's camera is under-display, so there is no cutout. The strip's own items
-  always read clock, network, nav bar, tab bar from the top; the camera is a separate cutout at its corner. Set
-  via `DuoFrameVerticalBar.CameraPlacement`.
+A drop-in Swift package that reframes your running app to a chosen iPhone Duo footprint: the real size, safe
+area, size classes and corner shape the fold would report. It hosts your actual root view controller, so what
+you see is your app laying out under Duo geometry, not a mockup. One call, no app-specific code, and it
+compiles to nothing in release builds.
 
-**Why the window, not the content.** An earlier version transformed the app's view inside a full-screen container.
-That works for the app itself but not for `.sheet` / `.fullScreenCover` / alerts / popovers: UIKit presents those in
-a transition view attached to the *window*, above the container, so they ignored the transform and filled the whole
-screen. Framing the window instead puts every presentation inside the footprint. It does *not* change the window's
-scene — iOS exposes no API for that (`GeometryPreferences.iOS` carries only orientation, `sizeRestrictions` only
-clamps a user drag) — it sets the window's own `bounds`, `transform` and `center` within the scene.
+## Highlights
 
-**Safe area.** The framed window inherits little or none of the host's safe area (a sub-screen window usually reports
-zero), so the hosted root is given `additionalSafeAreaInsets` = the faked Duo inset, clamped up to the host's real
-overlap where the footprint still reaches a hardware region. There is no transform between the controller's view and
-the window, so the child inherits the window's own insets normally.
+- **The Duo display poses** plus a shelf of released iPhone form factors and a custom size.
+- **Faithful geometry** where it counts: size, safe-area insets, size classes, and the real production resize
+  path (frame changes fire the same trait and safe-area callbacks a live fold would).
+- **Reframes the window, not the content**, so `.sheet`, `.fullScreenCover`, alerts and popovers land inside the
+  footprint too.
+- **Match physical size**, **Display Zoom** and **Override `UIScreen.bounds`** for the awkward edge cases.
+- **Cosmetic vertical bars**: a Duo-style side strip with a fake Dynamic Island, live clock, status glyphs and
+  your app's real nav and tab items, rehomed and still interactive.
+- **Draggable menu button** that snaps to any edge, hidden behind a shake gesture, off by default in release.
 
-**Caveats to verify on device (this path is new and untested):**
-- **The system may fight a custom window frame.** SwiftUI's `WindowGroup` and scene changes can reset `window.frame`;
-  the tool re-applies it on every layout pass, but if the OS overrides it you'll see it snap back. This is the main
-  risk of the window approach.
-- **Sheet sizing.** A `.pageSheet` sizes itself to the (now small) window, which is the point, but detents and the
-  card's own insets are the system's to place; check they land sensibly, especially under Display Zoom.
-- **Safe area under Display Zoom at full screen.** When the footprint fills the screen and the window reports real
-  insets, those are in the window's zoomed point space; the clamp handles the common cases but the notch overlap
-  edge case wants a real-device check.
-- **The keyboard** follows the window, so it should now sit inside the frame; confirm it isn't clipped by the corner
-  mask.
+## Requirements
 
-**Fit is to the whole scene**, not the host's safe area. On iPhone the scene is the physical screen; on iPad it is
-the window, so the frame follows Split View, Stage Manager and a live window resize. A frame the same size as the
-scene renders at 1:1; a smaller frame renders at true point size, centred with a border; only a frame larger than
-the scene scales below 1 (letterboxing just for an aspect-ratio mismatch). So on an iPhone 17 Pro, picking iPhone
-Pro fills the screen, iPhone SE is a bordered 1:1, and iPhone Pro Max scales down to fit. With framing off the
-window is handed back to UIKit untouched.
+| | |
+|---|---|
+| Platform | iOS 17+ |
+| Configuration | DEBUG only (empty module otherwise) |
+| Best on | iPad (iPad mini ideal); works on any device |
 
-Settings persist in `UserDefaults`, so the last preset survives relaunches. Presets can also be forced at
-launch with `-DuoFrameSimulator.settings <base64-json>` (used for scripted screenshots).
+Runs anywhere. On iPhone the larger Duo frames scale down to fit the screen, so you still get the layout, just
+not at physical size. For a true-to-size preview run on an iPad, where the frame renders at 1:1 or better. The
+iPad mini is the sweet spot: its density error errs pessimistic, so a marginal control that passes there passes
+on the Duo. Running on an iPad host needs an iPad-capable build (`TARGETED_DEVICE_FAMILY = 1,2`); for live
+host-window resizing, switch the iPad to **Windowed Apps** in Settings → Multitasking & Gestures.
 
-### The vertical-bar poses
+## Installation
 
-Every pose puts the controls on the side **except the inner display in portrait**, which keeps horizontal
-bars — the one HIG exception. So with vertical bars on: outer portrait/landscape, inner landscape and the
-inner Split View half draw the side strip; inner portrait leaves the real horizontal bars alone.
+Add the package in Xcode (**File → Add Package Dependencies…**) using the URL, and link the `DuoFrameSimulator`
+product to your app target:
 
-The strip's clock and network glyphs adapt from black to white against the content beneath them, sampled a
-few times a second — and each sample re-renders the app content, so it's the strip's one recurring cost.
-**Adapt status glyph colours** (Options toggle, on by default) turns that sampling off; the glyphs then stay
-`.label`. Turn it off if the strip is costing you frames and you don't need the adaptive colour.
+```
+https://github.com/appoly/iPhoneDuoFrameSimulator
+```
 
-### Driving the tabs
+Or in a `Package.swift`:
 
-Tapping a re-homed tab drives the real selection, including through SwiftUI's native `TabView` — `selectTab`
-sets `selectedTab`/`selectedIndex` and calls the tab bar delegate, and SwiftUI follows. Note this couldn't be
-verified by the automated tapper: `axe`/simctl synthetic taps don't land on scaled/transformed content, so tab
-interactivity has to be confirmed with a real click in Device Hub or the Simulator (it works).
+```swift
+.package(url: "https://github.com/appoly/iPhoneDuoFrameSimulator", from: "1.0.0")
+```
 
-## Adding it to a project
+Then call `install()` once before the first window appears, under `#if DEBUG`:
 
-1. Add the package as a dependency (a local path while it has no remote, e.g. **File → Add Package
-   Dependencies… → Add Local…**, or `XCLocalSwiftPackageReference` in the pbxproj) and link the
-   `DuoFrameSimulator` product to the app target.
-2. Import it and call `DuoFrameSimulator.install()` once before the first window appears, under `#if DEBUG`:
+```swift
+#if DEBUG
+import DuoFrameSimulator
+#endif
 
-   ```swift
-   #if DEBUG
-   import DuoFrameSimulator
-   #endif
+// SwiftUI App.init(), or application(_:didFinishLaunchingWithOptions:)
+#if DEBUG
+DuoFrameSimulator.install()
+#endif
+```
 
-   // SwiftUI App.init(), or application(_:didFinishLaunchingWithOptions:)
-   #if DEBUG
-   DuoFrameSimulator.install()
-   #endif
-   ```
+That's the whole integration. Every app window's root is re-parented under the simulator; UIKit's own windows
+(keyboard, alerts) are left alone.
 
-3. Optionally, if the app sizes anything from `UIScreen.main` inside SwiftUI bodies, add the rebuild modifier to the
-   `WindowGroup`'s root content so Display Zoom and the bounds override take effect without a relaunch:
+<details>
+<summary><b>Optional: rebuild on screen-metric changes</b></summary>
 
-   ```swift
-   WindowGroup {
-       RootView()
-           #if DEBUG
-           .duoFrameRebuildOnScreenMetricsChange()
-           #endif
-   }
-   ```
+If your app sizes anything from `UIScreen.main` inside SwiftUI bodies, add the rebuild modifier to your
+`WindowGroup`'s root content. Display Zoom and the bounds override then take effect without a relaunch, by giving
+the tree a new identity so every `body` re-runs (navigation and `@State` reset, exactly as a real relaunch would):
 
-Nothing here references app-specific types. The whole package is wrapped in `#if DEBUG`, so it compiles to an
-empty module in release builds; the app's own `#if DEBUG` guards keep the call sites out too. Xcode builds a
-package in Debug only for app configurations it recognises as debug (the name contains "Debug"), so a custom
-configuration such as "Staging" would get an empty module and fail to compile the call sites.
+```swift
+WindowGroup {
+    RootView()
+        #if DEBUG
+        .duoFrameRebuildOnScreenMetricsChange()
+        #endif
+}
+```
+</details>
 
-Numbers to confirm on the real 27.1 simulator: the Duo point sizes, the side-controls and Dynamic Island insets,
-the inner-display downsample scheme and the Split View half size classes. Update `DuoFrameInsets` and
-`DuoFramePreset.size(custom:)` once they're known.
+> [!NOTE]
+> The whole package is wrapped in `#if DEBUG`, so it compiles to an empty module in release builds. Xcode only
+> builds a package in Debug for configurations whose name contains "Debug", so a custom config like "Staging" gets
+> the empty module and won't compile the call sites. Keep them under your own `#if DEBUG`.
 
-The menu button is **hidden by default** and toggled with a **shake gesture** (Device → Shake in the
-Simulator). Pass `DuoFrameSimulator.install(showsButton: true)` to start with it visible.
+## Using it
 
-To exercise the presets on an iPad host you need an **iPad build** (`TARGETED_DEVICE_FAMILY = 1,2`),
-which enables resizable windows. No iPhone is 669 pt tall, so neither Duo frame fits a phone host. Use
-the **iPad mini** — its 6% density error errs pessimistic, so a marginal control that passes there
-passes on the Duo. For window-resize mode, switch the iPad to **Windowed Apps** in
-Settings → Multitasking & Gestures.
+The menu lives on a **floating button** that mirrors the iPad window controls. Drag it anywhere; it snaps to the
+nearest edge and remembers where you left it. It's **hidden by default** and toggled with a **shake gesture**
+(Device → Shake in the Simulator). Pass `install(showsButton: true)` to start visible.
+
+### Poses
+
+| Preset | Size (pt) | Size classes |
+|---|---|---|
+| Duo Outer · Landscape | 678 × 466 | Compact × Compact |
+| Duo Outer · Portrait | 466 × 678 | Compact × Regular |
+| Duo Inner · Landscape | 951 × 669 | Regular × Regular |
+| Duo Inner · Portrait | 669 × 951 | Regular × Regular |
+| Duo Inner · Split View half | 475 × 669 | Compact × Regular |
+
+An **Other sizes** submenu covers released iPhones (SE, mini, iPhone, XR, Plus, Pro, Pro Max) and a custom size,
+as a general "other device" simulator. Those are plain phones: compact width, their own safe area, uniform
+corners, no Duo side controls.
+
+### Options
+
+| Option | Default | What it does |
+|---|---|---|
+| Override size classes | On | Reports the pose's size classes to `NavigationSplitView`, adaptive presentations and `horizontalSizeClass` checks |
+| Report phone idiom | Off | Forces `.phone` idiom (UIKit honours it inconsistently) |
+| Match physical size | Off | Scales the frame so a point renders at the simulated device's real physical size |
+| Display Zoom | Off | Lays out at the device's zoomed point size and swizzles `UIScreen.nativeScale` to match |
+| Override `UIScreen.bounds` | Off | Reports the frame size from `UIScreen.bounds` (can misplace the keyboard and alerts) |
+| Simulate vertical bars | On | Hides the system bars and draws the Duo side strip with the rehomed items |
+| Adapt status glyph colours | Off | Samples the content under the clock and network glyphs to flip them black or white; re-renders the app content on each sample, so it carries a CPU cost |
+
+### Fit
+
+The frame fits to the whole scene: the physical screen on iPhone, the window on iPad (so it follows Split View,
+Stage Manager and live resizes). A frame the size of the scene renders at 1:1; a smaller one renders at true
+point size, centred with a border; only a larger one scales below 1. So on a 17 Pro, iPhone Pro fills the screen,
+iPhone SE is a bordered 1:1, and iPhone Pro Max scales down to fit.
+
+Settings persist in `UserDefaults`, so your last preset survives relaunches. They can also be forced at launch
+with `-DuoFrameSimulator.settings <base64-json>` for scripted screenshots.
+
+## How the framing works
+
+<details>
+<summary><b>Why the window, not the content</b></summary>
+
+The obvious approach, transforming the app's view inside a full-screen container, works for the app itself but
+not for `.sheet` / `.fullScreenCover` / alerts / popovers: UIKit presents those in a transition view attached to
+the *window*, above the container, so they ignore the transform and fill the whole screen.
+
+Framing the window instead puts every presentation inside the footprint. It does *not* change the window's scene, which
+iOS exposes no API for (`GeometryPreferences.iOS` carries only orientation, `sizeRestrictions` only clamps a user
+drag). Instead it sets the window's own `bounds`, `transform` and `center` within the scene.
+</details>
+
+<details>
+<summary><b>Safe area</b></summary>
+
+The framed window inherits little or none of the host's safe area (a sub-screen window usually reports zero), so
+the hosted root is given `additionalSafeAreaInsets` equal to the faked Duo inset, clamped up to the host's real
+overlap where the footprint still reaches a hardware region. There's no transform between the controller's view
+and the window, so the child inherits the window's own insets normally.
+</details>
+
+<details>
+<summary><b>Vertical bars, corners and the camera cutout</b></summary>
+
+**Vertical bars.** With side controls on a pose, the strip draws a fake Dynamic Island, the clock and the
+combined Wi-Fi/cellular glyph (metrics measured off Apple's HIG "Designing for iPhone Duo" screenshots), then the
+nav bar's items, then the tab bar's items bottom-aligned. The buttons drive the real controllers, including
+SwiftUI's native `TabView`, so tab switching genuinely selects. Every pose puts the controls on a side edge
+except the inner display in portrait, the one HIG exception, which keeps horizontal bars.
+
+**Split-view companion.** The inner Split View half draws the *other* app as a gradient placeholder pane on the
+opposite side, with a gutter between them. Each app keeps its controls on its outer edge, and both flip when you
+change the edge.
+
+**Corners.** Per-corner rounding matches the fixed physical device corners: the device exterior, a pane's seam
+against the divider, and the outer display's hinge. Inner rounds all four equally; a split pane rounds full on
+its outer corners and at the seam radius against the divider; outer portrait rounds the camera edge more than the
+hinge opposite it.
+
+**Camera cutout.** Fixed to the hardware and rotating with the device: top of the strip in outer portrait, and
+following the rotation in outer landscape. The inner display's camera is under-display, so there's no cutout.
+</details>
 
 ## What it can and can't fake
 
-Faithful: size, safe-area insets, size classes, and the production resize path (frame changes drive the
-same `traitCollectionDidChange` / `viewSafeAreaInsetsDidChange` callbacks a real fold would).
+**Faithful:** size, safe-area insets, size classes, and the production resize path (frame changes drive the same
+`traitCollectionDidChange` and `viewSafeAreaInsetsDidChange` callbacks a real fold would).
 
-Guesses, flagged until Apple publishes them: the exact Duo point sizes and Dynamic Island insets are
-placeholders (iPhone 17 Pro values). The inner-display sizes assume the Plus-model downsample scheme.
-Split View halves' size classes are unpublished.
+**Placeholders, flagged until Apple publishes them:** the exact Duo point sizes and Dynamic Island insets use
+iPhone 17 Pro values, the inner-display sizes assume the Plus-model downsample scheme, and Split View halves'
+size classes follow the iPad precedent. Update `DuoFrameInsets` and `DuoFramePreset.size(custom:)` once the 27.1
+simulator reports the real numbers.
 
-Can't fake anything gated behind the 27.1 SDK: real fold/hinge reserved regions, `ArrangementView`,
-`UIHingeInteraction`, or genuine system vertical bars. The vertical-bars mode here is cosmetic — the tab
-switching is real, but it isn't the system's layout.
-
+**Out of reach until the 27.1 SDK:** real fold and hinge reserved regions, `ArrangementView`,
+`UIHingeInteraction`, and genuine system vertical bars. The vertical-bars mode here is cosmetic; the tab
+switching is real, but it isn't the system's layout. The system keyboard follows the framed window but its own
+UI isn't adapted to the Duo.

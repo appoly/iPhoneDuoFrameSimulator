@@ -168,6 +168,7 @@ final class DuoFrameViewController: UIViewController {
         window.windowLevel = .normal + 1
         // Full screen: its safe area is the host's real device insets, the source for the framed root's overlap.
         chrome.onSafeAreaChange = { [weak self] in self?.frameWindow() }
+        chrome.appearanceSource = self   // self → shield → content → app root
         window.rootViewController = chrome
         // Assign before showing: making the window visible lays the chrome out synchronously, which can call back in
         // here; the stored reference stops a second window being built (and `chrome` re-rooted onto it).
@@ -184,6 +185,10 @@ final class DuoFrameViewController: UIViewController {
         isFramingWindow = true
         defer { isFramingWindow = false }
         ensureChromeWindow()
+        // Re-query the mirrored host preferences; the overlay window is frontmost, so it, not the app window, is the
+        // one UIKit consults. Flags only, so no re-entrancy through the overrides during this pass.
+        chrome.setNeedsStatusBarAppearanceUpdate()
+        chrome.setNeedsUpdateOfHomeIndicatorAutoHidden()
 
         // The scene, not the screen: on iPad the scene shrinks for Split View, Stage Manager and window resizing,
         // and UIKit re-lays the window out to match. Framing against the screen would fight that every pass.
@@ -456,6 +461,11 @@ private final class DuoFrameChromeViewController: UIViewController {
     private let menuButton: DuoFrameMenuButton
     var onSafeAreaChange: (() -> Void)?
 
+    /// The app-window status-bar root. This overlay sits in a window above the app, so it would otherwise govern the
+    /// status bar and home indicator itself and impose its defaults (revealing a bar an app hides). Mirroring the app
+    /// root's resolved preferences keeps the host in charge.
+    weak var appearanceSource: UIViewController?
+
     init(menuButton: DuoFrameMenuButton) {
         self.menuButton = menuButton
         super.init(nibName: nil, bundle: nil)
@@ -464,6 +474,27 @@ private final class DuoFrameChromeViewController: UIViewController {
     override func viewSafeAreaInsetsDidChange() {
         super.viewSafeAreaInsetsDidChange()
         onSafeAreaChange?()
+    }
+
+    override var prefersStatusBarHidden: Bool {
+        appearanceLeaf(\.childForStatusBarHidden)?.prefersStatusBarHidden ?? super.prefersStatusBarHidden
+    }
+
+    override var preferredStatusBarStyle: UIStatusBarStyle {
+        appearanceLeaf(\.childForStatusBarStyle)?.preferredStatusBarStyle ?? super.preferredStatusBarStyle
+    }
+
+    override var prefersHomeIndicatorAutoHidden: Bool {
+        appearanceLeaf(\.childForHomeIndicatorAutoHidden)?.prefersHomeIndicatorAutoHidden
+            ?? super.prefersHomeIndicatorAutoHidden
+    }
+
+    /// Follows the app root's `childFor…` chain to the controller that actually decides. Cross-window child forwarding
+    /// isn't valid (a `childFor…` child must share the containment hierarchy), so the leaf is resolved by hand.
+    private func appearanceLeaf(_ child: KeyPath<UIViewController, UIViewController?>) -> UIViewController? {
+        guard var current = appearanceSource else { return nil }
+        while let next = current[keyPath: child] { current = next }
+        return current
     }
 
     @available(*, unavailable)

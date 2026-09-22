@@ -187,13 +187,13 @@ following the rotation in outer landscape. The inner display's camera is under-d
 
 ## What it can and can't fake
 
-**Faithful:** size, safe-area insets, size classes, and the production resize path (frame changes drive the same
-`traitCollectionDidChange` and `viewSafeAreaInsetsDidChange` callbacks a real fold would).
+**Faithful:** pose sizes, safe-area insets, size classes, and the production resize path (frame changes drive the
+same `traitCollectionDidChange` and `viewSafeAreaInsetsDidChange` callbacks a real fold would). The point sizes,
+side-controls and status-bar insets, and size classes are measured on the iPhone Duo simulator (Xcode 27.1).
 
-**Placeholders, flagged until Apple publishes them:** the exact Duo point sizes and Dynamic Island insets use
-iPhone 17 Pro values, the inner-display sizes assume the Plus-model downsample scheme, and Split View halves'
-size classes follow the iPad precedent. Update `DuoFrameInsets` and `DuoFramePreset.size(custom:)` once the 27.1
-simulator reports the real numbers.
+**Still estimated:** the Display Zoom factors, the seam and hinge corner radii (only the exterior radius is
+measured), and the side strip's internal glyph layout. These are cosmetic or secondary; refine them from the
+simulator when needed.
 
 **Out of reach until the 27.1 SDK:** real fold and hinge reserved regions, `ArrangementView`,
 `UIHingeInteraction`, and genuine system vertical bars. The vertical-bars mode here is cosmetic; the tab

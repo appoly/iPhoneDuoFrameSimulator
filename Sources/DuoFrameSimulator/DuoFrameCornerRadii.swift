@@ -9,18 +9,17 @@
 import SwiftUI
 
 /// Per-corner radii for a pane, in the Duo's own point space, drawn as continuous corners like the hardware. Corners
-/// against the physical device's outer corners round more; corners along a fold seam or hinge round less. The exact
-/// radii are unpublished, so these are placeholders — only the asymmetry is meant to be faithful.
+/// against the physical device's outer corners round more; corners along a fold seam or hinge round less. The exterior
+/// radius is measured; the seam and hinge radii are still estimated, so their asymmetry is faithful but not their exact
+/// values.
 struct DuoFrameCornerRadii: Equatable {
     var topLeft: CGFloat
     var topRight: CGFloat
     var bottomLeft: CGFloat
     var bottomRight: CGFloat
 
-    /// Extrapolated from the camera cutout: the exterior corner's curve appears to run out level with the cutout's
-    /// bottom edge, 66 pt (28 inset + 38 diameter) along the edge. A continuous corner straightens out about 1.53
-    /// radii along each edge, so the radius is 66 / 1.53.
-    static let large: CGFloat = 43
+    /// The physical display corner, measured on the 27.1 Duo simulator (`UIScreen._displayCornerRadius`).
+    static let large: CGFloat = 59
     /// An inner Split View pane's corners against the divider. Unmeasured; a guess between the exterior and the hinge.
     static let seam: CGFloat = 26
     /// The outer display's hinge edge is a hard fold, so its corners are nearly square — squarer than a Split View

@@ -14,8 +14,9 @@ import UIKit
 /// selection but can only drive a UIKit-owned tab controller, not a SwiftUI `TabView` (see `selectTab`).
 final class DuoFrameVerticalBar: UIView {
 
-    /// The camera sits centred in the strip, so the strip is the cutout plus its edge inset on both sides.
-    static let width: CGFloat = Metrics.cameraDiameter + 2 * Metrics.cameraEdgeInset
+    /// Measured on the 27.1 Duo simulator: the outer camera / Dynamic Island occlusion region, and the safe-area inset
+    /// the framed content clears, are both 84 pt.
+    static let width: CGFloat = 84
 
     /// Where the camera cutout sits, driven by the pose. It is fixed to the hardware, so it rotates with the device;
     /// the inner display's camera is under-display and never shows.
@@ -33,13 +34,13 @@ final class DuoFrameVerticalBar: UIView {
         }
     }
 
-    // Measured from the HIG "Designing for iPhone Duo" Mail screenshot at 466×678 pt; every value is a placeholder
-    // until the 27.1 simulator shows the real bar. Offsets are from the near end (top or bottom) of the status cluster.
-    // The camera is the best-measured: 38 pt across, 28 pt in from the device's top and side edges.
+    // The camera diameter and the strip width are measured on the 27.1 Duo simulator (camera occlusion region 37×37,
+    // strip width 84). The clock/network offsets are still read from the HIG "Designing for iPhone Duo" screenshots;
+    // offsets are from the near end (top or bottom) of the status cluster.
     private enum Metrics {
         static let itemSide: CGFloat = 50
         static let groupSpacing: CGFloat = 8
-        static let cameraDiameter: CGFloat = 38
+        static let cameraDiameter: CGFloat = 37
         static let cameraEdgeInset: CGFloat = 28
         static let cameraCentreOffset: CGFloat = cameraEdgeInset + cameraDiameter / 2
         static let clockCentreOffset: CGFloat = 92
@@ -48,8 +49,9 @@ final class DuoFrameVerticalBar: UIView {
         static let statusToItemsGap: CGFloat = 21
         static let topMargin: CGFloat = 24
         static let bottomMargin: CGFloat = 24
-        // With no camera, the clock and network slide up into the vacated corner.
-        static let noCameraClockCentre: CGFloat = 34
+        // With no camera, the clock and network slide up into the vacated corner. Measured on the 27.1 Duo simulator
+        // (inner landscape): clock centre 40, network centre 73.
+        static let noCameraClockCentre: CGFloat = 40
         static let noCameraNetworkCentre: CGFloat = 73
     }
 

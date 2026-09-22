@@ -30,8 +30,7 @@ enum DuoFramePreset: String, Codable, CaseIterable {
         }
     }
 
-    // Outer: Apple's 1398×2034 px at 3x. Inner: rendered at the outer display's ~153 pt/inch then downsampled to
-    // the 1878×2670 px panel (Plus-model scheme). Unconfirmed until the 27.1 simulator reports them.
+    // Measured on the 27.1 Duo simulator. A Split View half is (951 − gutter) / 2.
     func size(custom: CGSize) -> CGSize? {
         switch self {
         case .off, .otherDevice: nil
@@ -39,7 +38,7 @@ enum DuoFramePreset: String, Codable, CaseIterable {
         case .outerPortrait: CGSize(width: 466, height: 678)
         case .innerLandscape: CGSize(width: 951, height: 669)
         case .innerPortrait: CGSize(width: 669, height: 951)
-        case .innerSplitHalf: CGSize(width: 475, height: 669)
+        case .innerSplitHalf: CGSize(width: 469, height: 669)
         }
     }
 
@@ -113,12 +112,12 @@ enum DuoFrameSideEdge: String, Codable, CaseIterable {
     }
 }
 
-/// Placeholders until Apple publishes the Duo's insets. The side inset equals the drawn strip width so app content
-/// (and its scroll indicators) always clears the controls region; the rest are iPhone Pro values.
+/// Measured on the 27.1 Duo simulator. The side inset equals the drawn strip width so app content (and its scroll
+/// indicators) always clears the controls region.
 enum DuoFrameInsets {
     static let sideControls = DuoFrameVerticalBar.width
-    static let sideControlsHomeIndicator: CGFloat = 21
-    static let portraitStatusBar: CGFloat = 59
+    static let sideControlsHomeIndicator: CGFloat = 34
+    static let portraitStatusBar: CGFloat = 82
     static let portraitHomeIndicator: CGFloat = 34
 
     static let portrait = UIEdgeInsets(top: portraitStatusBar, left: 0, bottom: portraitHomeIndicator, right: 0)

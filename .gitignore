@@ -3,3 +3,7 @@
 /.swiftpm
 /*.xcodeproj
 xcuserdata/
+
+# Measurement probe (non-shipping): build artefacts only; the project itself is tracked
+Measurement/**/build/
+Measurement/**/.swiftpm/

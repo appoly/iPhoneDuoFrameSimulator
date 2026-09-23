@@ -425,7 +425,7 @@ final class DuoFrameViewController: UIViewController {
     /// the framed content), then scaled by the content scale and centred on the footprint's controls edge in screen
     /// points.
     private func updateVerticalBar(geometry: DuoFrameGeometry, footprint: CGRect, contentScale: CGFloat) {
-        guard settings.simulatesVerticalBars, let edge = geometry.sideEdge else {
+        guard let edge = geometry.sideEdge else {
             verticalBar.detach()
             return
         }

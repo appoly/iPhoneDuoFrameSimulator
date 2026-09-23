@@ -130,7 +130,6 @@ relaunch the app to get the phone bottom bar; a notice appears while a visible t
 | Match physical size | Off | Scales the frame so a point renders at the simulated device's real physical size |
 | Display Zoom | Off | Lays out at the device's zoomed point size and swizzles `UIScreen.nativeScale` to match |
 | Override `UIScreen.bounds` | Off | Reports the frame size from `UIScreen.bounds` (can misplace the keyboard and alerts) |
-| Simulate vertical bars | On | Hides the system bars and draws the Duo side strip with the rehomed items |
 | Adapt status glyph colours | Off | Samples the content under the clock and network glyphs to flip them black or white; re-renders the app content on each sample, so it carries a CPU cost |
 | Show reserved regions | Off | Stripes the camera occlusion and fold keep-out zones as a guide, without changing the layout; the fold is a static marker since the simulator can't fold |
 
@@ -200,6 +199,6 @@ isn't offered there), so these can only be confirmed on real hardware; the place
 factor until then.
 
 **Out of reach until the 27.1 SDK:** real fold and hinge reserved regions, `ArrangementView`,
-`UIHingeInteraction`, and genuine system vertical bars. The vertical-bars mode here is cosmetic; the tab
+`UIHingeInteraction`, and genuine system vertical bars. The vertical bars here are cosmetic; the tab
 switching is real, but it isn't the system's layout. The system keyboard follows the framed window but its own
 UI isn't adapted to the Duo.

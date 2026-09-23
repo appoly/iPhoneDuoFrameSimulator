@@ -162,7 +162,6 @@ struct DuoFrameSettings: Codable, Equatable {
     var sideEdge = DuoFrameSideEdge.right
     var overridesSizeClasses = true
     var matchesPhysicalDensity = false
-    var simulatesVerticalBars = true
     /// Whether the side strip's clock and network glyphs sample the content beneath them to flip black/white. Each
     /// sample re-renders the app content, so it carries a recurring CPU cost; off by default, and the glyphs then
     /// stay `.label`.

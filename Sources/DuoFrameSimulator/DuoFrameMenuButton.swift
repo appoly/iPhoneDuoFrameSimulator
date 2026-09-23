@@ -196,18 +196,10 @@ final class DuoFrameMenuButton: UIButton {
                     enabled: isFramed
                 ),
                 toggle(
-                    "Simulate vertical bars",
-                    subtitle: hasSideEdge
-                        ? "Hides the system bars; their items move to the side strip"
-                        : "Needs a pose with side controls and an edge",
-                    keyPath: \.simulatesVerticalBars,
-                    enabled: hasSideEdge
-                ),
-                toggle(
                     "Adapt status glyph colours",
                     subtitle: "Samples content under the clock/network to flip black·white; costs CPU",
                     keyPath: \.adaptsStatusColours,
-                    enabled: hasSideEdge && settings.simulatesVerticalBars
+                    enabled: hasSideEdge
                 ),
                 toggle(
                     "Show reserved regions",

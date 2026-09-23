@@ -85,7 +85,11 @@ struct ContentView: View {
             } action: { _ in
                 capture(proxy)
             }
-            .onAppear { capture(proxy) }
+            .onAppear {
+                capture(proxy)
+                // `-autoBars YES` opens the bars probe on launch, for scripted runs.
+                if UserDefaults.standard.bool(forKey: "autoBars") { isBarsProbePresented = true }
+            }
             .onHingeChange { _, newValue in
                 if let hinge = newValue.hinge {
                     hingeStatus = "\(hinge.status)"

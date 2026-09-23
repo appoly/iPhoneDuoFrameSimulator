@@ -34,6 +34,12 @@ enum ProbeTab: String, CaseIterable, Identifiable {
 
     var id: Self { self }
 
+    /// `-tabCount N` launches with only the first N tabs, to measure how the bar sizes to its item count.
+    static var probed: [ProbeTab] {
+        let count = UserDefaults.standard.integer(forKey: "tabCount")
+        return count > 0 ? Array(allCases.prefix(count)) : allCases
+    }
+
     var title: String { rawValue.capitalized }
 
     var symbol: String {
@@ -59,7 +65,7 @@ struct BarsProbeView: View {
 
     var body: some View {
         TabView(selection: $selection) {
-            ForEach(ProbeTab.allCases) { tab in
+            ForEach(ProbeTab.probed) { tab in
                 Tab(tab.title, systemImage: tab.symbol, value: tab, role: tab == .search ? .search : nil) {
                     NavigationStack {
                         report(for: tab)

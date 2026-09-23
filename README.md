@@ -1,7 +1,7 @@
 <h1 align="center">DuoFrameSimulator</h1>
 
 <p align="center">
-  Preview your app's layout at <b>iPhone Duo</b> display sizes, today, without waiting for the Xcode 27.1 Duo simulator.
+  Preview your app's layout at <b>iPhone Duo</b> display sizes on any device, without switching to the Duo simulator and Device Hub.
 </p>
 
 <p align="center">
@@ -112,7 +112,7 @@ nearest edge and remembers where you left it. It's **hidden by default** and tog
 | Duo Outer · Portrait | 466 × 678 | Compact × Regular |
 | Duo Inner · Landscape | 951 × 669 | Regular × Regular |
 | Duo Inner · Portrait | 669 × 951 | Regular × Regular |
-| Duo Inner · Split View half | 475 × 669 | Compact × Regular |
+| Duo Inner · Split View half | 469 × 669 | Compact × Regular |
 
 An **Other sizes** submenu covers released iPhones (SE, mini, iPhone, XR, Plus, Pro, Pro Max) and a custom size,
 as a general "other device" simulator. Those are plain phones: compact width, their own safe area, uniform
@@ -168,8 +168,8 @@ and the window, so the child inherits the window's own insets normally.
 <summary><b>Vertical bars, corners and the camera cutout</b></summary>
 
 **Vertical bars.** With side controls on a pose, the strip draws a fake Dynamic Island, the clock and the
-combined Wi-Fi/cellular glyph (metrics measured off Apple's HIG "Designing for iPhone Duo" screenshots), then the
-nav bar's items, then the tab bar's items bottom-aligned. The buttons drive the real controllers, including
+combined Wi-Fi/cellular glyph (camera and status-cluster metrics measured on the 27.1 simulator; the nav/tab item
+spacing is still from Apple's HIG screenshots), then the nav bar's items, then the tab bar's items bottom-aligned. The buttons drive the real controllers, including
 SwiftUI's native `TabView`, so tab switching genuinely selects. Every pose puts the controls on a side edge
 except the inner display in portrait, the one HIG exception, which keeps horizontal bars.
 
@@ -188,13 +188,13 @@ following the rotation in outer landscape. The inner display's camera is under-d
 
 ## What it can and can't fake
 
-**Faithful:** pose sizes, safe-area insets, size classes, and the production resize path (frame changes drive the
-same `traitCollectionDidChange` and `viewSafeAreaInsetsDidChange` callbacks a real fold would). The point sizes,
-side-controls and status-bar insets, and size classes are measured on the iPhone Duo simulator (Xcode 27.1).
+**Faithful:** pose sizes, safe-area insets, size classes, corner radii, the side strip's glyph layout, and the
+production resize path (frame changes drive the same `traitCollectionDidChange` and `viewSafeAreaInsetsDidChange`
+callbacks a real fold would). All measured on the iPhone Duo simulator (Xcode 27.1).
 
-**Still estimated:** the Display Zoom factors, the seam and hinge corner radii (only the exterior radius is
-measured), and the side strip's internal glyph layout. These are cosmetic or secondary; refine them from the
-simulator when needed.
+**Still estimated:** the Display Zoom factors. Display Zoom can't be exercised on the Duo simulator (the setting
+isn't offered there), so these can only be confirmed on real hardware; the placeholders use the iPhone 17 Pro
+factor until then.
 
 **Out of reach until the 27.1 SDK:** real fold and hinge reserved regions, `ArrangementView`,
 `UIHingeInteraction`, and genuine system vertical bars. The vertical-bars mode here is cosmetic; the tab

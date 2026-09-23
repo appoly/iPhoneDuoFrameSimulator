@@ -143,6 +143,10 @@ Stage Manager and live resizes). A frame the size of the scene renders at 1:1; a
 point size, centred with a border; only a larger one scales below 1. So on a 17 Pro, iPhone Pro fills the screen,
 iPhone SE is a bordered 1:1, and iPhone Pro Max scales down to fit.
 
+Where the frame reaches the host's own insets, an iPhone host's hardware (Dynamic Island, corners) still pushes
+the content clear. An iPad's status bar and home indicator are only software, so the frame keeps its own safe
+area and those bars hide or fade while it overlaps them.
+
 Settings persist in `UserDefaults`, so your last preset survives relaunches. They can also be forced at launch
 with `-DuoFrameSimulator.settings <base64-json>` for scripted screenshots.
 

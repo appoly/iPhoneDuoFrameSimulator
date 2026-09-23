@@ -37,6 +37,7 @@ final class DuoFrameViewController: UIViewController {
     private var hasAppliedScreenOverrides = false
     private var isFramingWindow = false
     private var isWindowFramed = false
+    private var hostStatusBarInset: CGFloat = 0
     private let tabBarBuiltAsPhone = NSMapTable<UITabBarController, NSNumber>.weakToStrongObjects()
 
     private static let splitGutter: CGFloat = 14
@@ -253,6 +254,8 @@ final class DuoFrameViewController: UIViewController {
             if root.additionalSafeAreaInsets != host { root.additionalSafeAreaInsets = host }
             DuoFramePresentationOverride.framedWindow = nil
             chrome.clear()
+            chrome.hidesHostStatusBar = false
+            chrome.hidesHostHomeIndicator = false
             verticalBar.detach()
             tabBar.detach()
             cornerStatus.removeFromSuperview()
@@ -389,21 +392,30 @@ final class DuoFrameViewController: UIViewController {
     /// hardware region (a frame as large as, or larger than, the host over the notch). The host's real insets come
     /// from the full-screen chrome window, in screen points, so they're converted to the content's points by the
     /// content scale.
+    /// Only a host whose insets are hardware (an iPhone's island and corners) pushes the content clear of them. An
+    /// iPad's are software bars, so the frame keeps its own insets and the host bars hide or fade while overlapped.
     private func applySafeArea(target: UIEdgeInsets, footprint: CGRect, metrics: FrameMetrics) {
         let host = chromeWindow?.safeAreaInsets ?? .zero
+        let honoursHost = UIDevice.current.userInterfaceIdiom.duoFrameHasHardwareInsets
+        // Hiding the status bar zeroes the host's top inset, so keep the last one seen to judge the overlap by.
+        if host.top > 0 { hostStatusBarInset = host.top }
+        let hostTop = honoursHost ? host.top : hostStatusBarInset
         let arena = metrics.arena
         let scale = metrics.contentScale
         let overlap = UIEdgeInsets(
-            top: max(0, host.top - footprint.minY) / scale,
+            top: max(0, hostTop - footprint.minY) / scale,
             left: max(0, host.left - footprint.minX) / scale,
             bottom: max(0, host.bottom - (arena.height - footprint.maxY)) / scale,
             right: max(0, host.right - (arena.width - footprint.maxX)) / scale
         )
+        chrome.hidesHostStatusBar = !honoursHost && overlap.top > 0
+        chrome.hidesHostHomeIndicator = !honoursHost && overlap.bottom > 0
+        let counted = honoursHost ? overlap : .zero
         let additional = UIEdgeInsets(
-            top: max(target.top, overlap.top),
-            left: max(target.left, overlap.left),
-            bottom: max(target.bottom, overlap.bottom),
-            right: max(target.right, overlap.right)
+            top: max(target.top, counted.top),
+            left: max(target.left, counted.left),
+            bottom: max(target.bottom, counted.bottom),
+            right: max(target.right, counted.right)
         )
         if root.additionalSafeAreaInsets != additional {
             root.additionalSafeAreaInsets = additional
@@ -603,8 +615,23 @@ private final class DuoFrameChromeViewController: UIViewController {
         onSafeAreaChange?()
     }
 
+    var hidesHostStatusBar = false {
+        didSet {
+            guard hidesHostStatusBar != oldValue else { return }
+            setNeedsStatusBarAppearanceUpdate()
+        }
+    }
+
+    var hidesHostHomeIndicator = false {
+        didSet {
+            guard hidesHostHomeIndicator != oldValue else { return }
+            setNeedsUpdateOfHomeIndicatorAutoHidden()
+        }
+    }
+
     override var prefersStatusBarHidden: Bool {
-        appearanceLeaf(\.childForStatusBarHidden)?.prefersStatusBarHidden ?? super.prefersStatusBarHidden
+        hidesHostStatusBar
+            || appearanceLeaf(\.childForStatusBarHidden)?.prefersStatusBarHidden ?? super.prefersStatusBarHidden
     }
 
     override var preferredStatusBarStyle: UIStatusBarStyle {
@@ -612,7 +639,8 @@ private final class DuoFrameChromeViewController: UIViewController {
     }
 
     override var prefersHomeIndicatorAutoHidden: Bool {
-        appearanceLeaf(\.childForHomeIndicatorAutoHidden)?.prefersHomeIndicatorAutoHidden
+        hidesHostHomeIndicator
+            || appearanceLeaf(\.childForHomeIndicatorAutoHidden)?.prefersHomeIndicatorAutoHidden
             ?? super.prefersHomeIndicatorAutoHidden
     }
 
@@ -830,6 +858,16 @@ private extension UIButton.Configuration {
         config.subtitle = "Tap to dismiss"
         config.contentInsets = NSDirectionalEdgeInsets(top: 10, leading: 14, bottom: 10, trailing: 14)
         return config
+    }
+}
+
+private extension UIUserInterfaceIdiom {
+    var duoFrameHasHardwareInsets: Bool {
+        switch self {
+        case .phone: true
+        case .pad, .mac, .tv, .carPlay, .vision, .unspecified: false
+        @unknown default: false
+        }
     }
 }
 

@@ -20,6 +20,11 @@ final class DuoFrameMenuButton: UIButton {
     private static let positionKey = "DuoFrameSimulator.menuButtonPosition"
     private static let edgeMargin: CGFloat = 8
 
+    /// True while the menu is presented. The overlay window reads it to swallow an outside tap (so UIKit's own
+    /// dismissal fires) instead of passing the tap through to the app. Set when the menu builds; cleared when a choice
+    /// is made (in the controller's `apply()`) or when an outside tap dismisses it.
+    var isMenuOpen = false
+
     init(controller: DuoFrameViewController) {
         self.controller = controller
         super.init(frame: .zero)
@@ -39,6 +44,7 @@ final class DuoFrameMenuButton: UIButton {
         accessibilityLabel = "Duo frame simulator"
         menu = UIMenu(children: [
             UIDeferredMenuElement.uncached { [weak self] completion in
+                self?.isMenuOpen = true
                 completion(self?.menuElements() ?? [])
             }
         ])
@@ -48,6 +54,15 @@ final class DuoFrameMenuButton: UIButton {
     @available(*, unavailable)
     required init?(coder: NSCoder) {
         fatalError("DuoFrameMenuButton is created in code only")
+    }
+
+    /// Dismisses the presented menu. The primary-action menu is backed by a `UIContextMenuInteraction` on the button;
+    /// `showsMenuAsPrimaryAction` gives no auto-dismiss when hosted in the overlay window, so dismiss it explicitly.
+    func dismissMenuIfOpen() {
+        for interaction in interactions {
+            (interaction as? UIContextMenuInteraction)?.dismissMenu()
+        }
+        isMenuOpen = false
     }
 
     // MARK: - Dragging

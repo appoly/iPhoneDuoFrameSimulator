@@ -112,6 +112,8 @@ final class DuoFrameViewController: UIViewController {
     // MARK: - Applying settings
 
     private func apply() {
+        // A settings change means a menu choice was made, so the menu is closing; clear the swallow flag.
+        menuButton.isMenuOpen = false
         applyTraitOverrides()
         applyScreenOverrides()
         verticalBar.cameraPlacement = cameraPlacement(for: settings.geometry)
@@ -166,6 +168,8 @@ final class DuoFrameViewController: UIViewController {
         // Above the app window so the menu button is reachable even when the frame fills the screen; the passthrough
         // window forwards every touch that misses the button down to the app window.
         window.windowLevel = .normal + 1
+        window.isMenuOpen = { [weak self] in self?.menuButton.isMenuOpen ?? false }
+        window.onOutsideTapWhileMenuOpen = { [weak self] in self?.menuButton.dismissMenuIfOpen() }
         // Full screen: its safe area is the host's real device insets, the source for the framed root's overlap.
         chrome.onSafeAreaChange = { [weak self] in self?.frameWindow() }
         chrome.appearanceSource = self   // self → shield → content → app root
@@ -692,11 +696,19 @@ private final class DuoFrameShieldView: UIView {
     }
 }
 
-/// Passes every touch that doesn't land on an interactive subview (the menu button) down to the window beneath it.
+/// Passes every touch that doesn't land on an interactive subview (the menu button) down to the window beneath it —
+/// except while the menu is open, when it keeps an outside tap so UIKit's own dismissal can fire instead of the tap
+/// reaching the app.
 private final class DuoFramePassthroughWindow: UIWindow {
+    var isMenuOpen: () -> Bool = { false }
+    var onOutsideTapWhileMenuOpen: () -> Void = {}
+
     override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
         let hit = super.hitTest(point, with: event)
-        return hit === rootViewController?.view ? nil : hit
+        guard hit === rootViewController?.view else { return hit }
+        guard isMenuOpen() else { return nil }
+        onOutsideTapWhileMenuOpen()
+        return hit
     }
 }
 

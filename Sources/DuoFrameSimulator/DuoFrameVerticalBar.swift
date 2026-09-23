@@ -10,8 +10,8 @@ import UIKit
 
 /// Stand-in for the iOS 27.1 side controls: camera, clock and network glyph at the top, the hosted navigation bar's
 /// items below them, and the hosted tab bar's items bottom-aligned. The real system bars are hidden while attached.
-/// Navigation/toolbar items drive the real controllers via their target-action; tab items mirror the real tab bar's
-/// selection but can only drive a UIKit-owned tab controller, not a SwiftUI `TabView` (see `selectTab`).
+/// Navigation/toolbar items drive the real controllers via their target-action; tab items mirror and drive the real
+/// tab bar's selection, including a SwiftUI `TabView`'s.
 final class DuoFrameVerticalBar: UIView {
 
     /// Measured on the 27.1 Duo simulator: the outer camera / Dynamic Island occlusion region, and the safe-area inset
@@ -621,11 +621,6 @@ final class DuoFrameVerticalBar: UIView {
         return button
     }
 
-    /// Best effort selection. Drives a UIKit-owned `UITabBarController` (the portable case). A SwiftUI-native
-    /// `TabView` binds its content to its own selection state and ignores external selection entirely — proven by
-    /// experiment: its private `UIKitTabBarController` accepts `selectedIndex`/`selectedTab` and the delegate call,
-    /// but the displayed tab never follows. There the side tabs mirror the real selection but can't change it; turn
-    /// the simulator off to navigate, or use the real iOS 27.1 vertical bars.
     private func selectTab(_ index: Int) {
         guard let tabBarController else { return }
         if #available(iOS 18, *), tabBarController.tabs.indices.contains(index) {

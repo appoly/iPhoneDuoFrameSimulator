@@ -22,8 +22,8 @@ compiles to nothing in release builds.
 ## Highlights
 
 - **The Duo display poses** plus a shelf of released iPhone form factors and a custom size.
-- **Faithful geometry** where it counts: size, safe-area insets, size classes, and the real production resize
-  path (frame changes fire the same trait and safe-area callbacks a live fold would).
+- **Faithful geometry** where it counts: size, safe-area insets, size classes, the phone idiom, and the real
+  production resize path (frame changes fire the same trait and safe-area callbacks a live fold would).
 - **Reframes the window, not the content**, so `.sheet`, `.fullScreenCover`, alerts and popovers land inside the
   footprint too.
 - **Match physical size**, **Display Zoom** and **Override `UIScreen.bounds`** for the awkward edge cases.
@@ -118,12 +118,15 @@ An **Other sizes** submenu covers released iPhones (SE, mini, iPhone, XR, Plus, 
 as a general "other device" simulator. Those are plain phones: compact width, their own safe area, uniform
 corners, no Duo side controls.
 
+Every preset reports the `.phone` idiom through the trait collection, as the Duo does (`UIDevice.current` still
+reports the host's). On an iPad, tab bars keep the style they launched with, so after turning framing on or off
+relaunch the app to get the phone bottom bar; a notice appears while a visible tab bar is out of step.
+
 ### Options
 
 | Option | Default | What it does |
 |---|---|---|
 | Override size classes | On | Reports the pose's size classes to `NavigationSplitView`, adaptive presentations and `horizontalSizeClass` checks |
-| Report phone idiom | Off | Forces `.phone` idiom (UIKit honours it inconsistently) |
 | Match physical size | Off | Scales the frame so a point renders at the simulated device's real physical size |
 | Display Zoom | Off | Lays out at the device's zoomed point size and swizzles `UIScreen.nativeScale` to match |
 | Override `UIScreen.bounds` | Off | Reports the frame size from `UIScreen.bounds` (can misplace the keyboard and alerts) |

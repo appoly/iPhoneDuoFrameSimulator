@@ -178,12 +178,6 @@ final class DuoFrameMenuButton: UIButton {
             children: [
                 toggle("Override size classes", keyPath: \.overridesSizeClasses, enabled: isFramed),
                 toggle(
-                    "Report phone idiom",
-                    subtitle: "UIKit honours it inconsistently",
-                    keyPath: \.reportsPhoneIdiom,
-                    enabled: isFramed
-                ),
-                toggle(
                     "Match physical size",
                     subtitle: "Scales so a point is the device's physical size",
                     keyPath: \.matchesPhysicalDensity,

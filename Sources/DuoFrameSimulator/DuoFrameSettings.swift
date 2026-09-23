@@ -161,7 +161,6 @@ struct DuoFrameSettings: Codable, Equatable {
     var otherDevice = DuoDevice.defaultOther
     var sideEdge = DuoFrameSideEdge.right
     var overridesSizeClasses = true
-    var reportsPhoneIdiom = false
     var matchesPhysicalDensity = false
     var simulatesVerticalBars = true
     /// Whether the side strip's clock and network glyphs sample the content beneath them to flip black/white. Each

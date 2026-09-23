@@ -35,6 +35,7 @@ final class DuoFrameViewController: UIViewController {
     private var hasAppliedScreenOverrides = false
     private var isFramingWindow = false
     private var isWindowFramed = false
+    private let tabBarBuiltAsPhone = NSMapTable<UITabBarController, NSNumber>.weakToStrongObjects()
 
     private static let splitGutter: CGFloat = 14
 
@@ -114,11 +115,13 @@ final class DuoFrameViewController: UIViewController {
     private func apply() {
         // A settings change means a menu choice was made, so the menu is closing; clear the swallow flag.
         menuButton.isMenuOpen = false
+        recordTabBarStyles()
         applyTraitOverrides()
         applyScreenOverrides()
         verticalBar.cameraPlacement = cameraPlacement(for: settings.geometry)
         // The bar is attached and positioned in `frameWindow`, once the overlay window that hosts it exists.
         frameWindow()
+        updateTabBarNotice()
     }
 
     /// The outer display's camera is a physical cutout that rotates with the device; the inner display's is
@@ -141,11 +144,51 @@ final class DuoFrameViewController: UIViewController {
             root.traitOverrides.remove(UITraitHorizontalSizeClass.self)
             root.traitOverrides.remove(UITraitVerticalSizeClass.self)
         }
-        if settings.geometry != nil, settings.reportsPhoneIdiom {
+        if settings.geometry != nil {
             root.traitOverrides.userInterfaceIdiom = .phone
         } else {
             root.traitOverrides.remove(UITraitUserInterfaceIdiom.self)
         }
+    }
+
+    // MARK: - Tab bar style
+
+    /// A tab bar controller fixes its iPad-or-phone style at its first layout, so each is tagged with the idiom the
+    /// root carries when first seen — before this settings change alters it, so still the one it was built under.
+    private func recordTabBarStyles() {
+        let isPhone = NSNumber(value: root.traitOverrides.contains(UITraitUserInterfaceIdiom.self))
+        for tabs in appTabBarControllers where tabBarBuiltAsPhone.object(forKey: tabs) == nil {
+            tabBarBuiltAsPhone.setObject(isPhone, forKey: tabs)
+        }
+    }
+
+    /// Only an iPad host on 18+ has a second (floating top) style, and compact width forces the bottom bar anyway.
+    private func updateTabBarNotice() {
+        guard #available(iOS 18, *), UIDevice.current.userInterfaceIdiom == .pad else { return }
+        let wantsPhone = root.traitOverrides.contains(UITraitUserInterfaceIdiom.self)
+        root.updateTraitsIfNeeded()
+        let isStale = root.traitCollection.horizontalSizeClass == .regular && appTabBarControllers.contains { tabs in
+            guard tabs.viewIfLoaded?.window != nil, !tabs.isTabBarHidden else { return false }
+            return tabBarBuiltAsPhone.object(forKey: tabs).map { $0.boolValue != wantsPhone } ?? false
+        }
+        guard isStale else {
+            chrome.notice = nil
+            return
+        }
+        chrome.notice = wantsPhone
+            ? "Tab bars keep the style they launched with. Relaunch to see the phone-style tab bar."
+            : "Tab bars keep the style they launched with. Relaunch to restore the iPad tab bar."
+    }
+
+    /// The app root's tree plus anything presented over it (presentations hang off this controller, the window root).
+    private var appTabBarControllers: [UITabBarController] {
+        var trees = [root]
+        var presented = presentedViewController
+        while let next = presented {
+            trees.append(next)
+            presented = next.presentedViewController
+        }
+        return trees.flatMap(\.tabBarControllersInTree)
     }
 
     private func applyScreenOverrides() {
@@ -500,7 +543,16 @@ private final class DuoFrameChromeViewController: UIViewController {
     private let companionMaskLayer = CAShapeLayer()
     private let reservedRegionsView = DuoFrameReservedRegionsView()
     private let menuButton: DuoFrameMenuButton
+    private let noticeButton = UIButton(configuration: .noticeStyle)
     var onSafeAreaChange: (() -> Void)?
+
+    /// Shown until tapped; setting it again (even to the same text) re-shows it.
+    var notice: String? {
+        didSet {
+            noticeButton.configuration?.title = notice
+            noticeButton.isHidden = notice == nil
+        }
+    }
 
     /// The app-window status-bar root. This overlay sits in a window above the app, so it would otherwise govern the
     /// status bar and home indicator itself and impose its defaults (revealing a bar an app hides). Mirroring the app
@@ -571,8 +623,22 @@ private final class DuoFrameChromeViewController: UIViewController {
         reservedRegionsView.frame = view.bounds
         view.addSubview(reservedRegionsView)
 
+        noticeButton.isHidden = notice == nil
+        noticeButton.addAction(
+            UIAction { [weak self] _ in self?.noticeButton.isHidden = true }, for: .primaryActionTriggered
+        )
+        view.addSubview(noticeButton)
+        noticeButton.translatesAutoresizingMaskIntoConstraints = false
+        let safe = view.safeAreaLayoutGuide
+        NSLayoutConstraint.activate([
+            noticeButton.topAnchor.constraint(equalTo: safe.topAnchor, constant: 12),
+            noticeButton.centerXAnchor.constraint(equalTo: safe.centerXAnchor),
+            noticeButton.widthAnchor.constraint(lessThanOrEqualToConstant: 420),
+            noticeButton.leadingAnchor.constraint(greaterThanOrEqualTo: safe.leadingAnchor, constant: 16)
+        ])
+
         // The button positions itself (draggable, edge-snapped, persisted), so it manages its own frame. Added last so
-        // it stays above the reserved-region overlay.
+        // it stays above the reserved-region overlay and the notice.
         menuButton.isHidden = !DuoFrameSimulator.showsButtonByDefault
         view.addSubview(menuButton)
     }
@@ -709,6 +775,27 @@ private final class DuoFramePassthroughWindow: UIWindow {
         guard isMenuOpen() else { return nil }
         onOutsideTapWhileMenuOpen()
         return hit
+    }
+}
+
+private extension UIViewController {
+    var tabBarControllersInTree: [UITabBarController] {
+        let own = (self as? UITabBarController).map { [$0] } ?? []
+        return own + children.flatMap(\.tabBarControllersInTree)
+    }
+}
+
+private extension UIButton.Configuration {
+    static var noticeStyle: Self {
+        var config = Self.filled()
+        config.baseBackgroundColor = .systemYellow
+        config.baseForegroundColor = .black
+        config.cornerStyle = .large
+        config.titleAlignment = .center
+        config.titleLineBreakMode = .byWordWrapping
+        config.subtitle = "Tap to dismiss"
+        config.contentInsets = NSDirectionalEdgeInsets(top: 10, leading: 14, bottom: 10, trailing: 14)
+        return config
     }
 }
 

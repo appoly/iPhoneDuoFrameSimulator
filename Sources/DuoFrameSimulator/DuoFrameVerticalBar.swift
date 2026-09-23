@@ -18,6 +18,11 @@ final class DuoFrameVerticalBar: UIView {
     /// the framed content clears, are both 84 pt.
     static let width: CGFloat = 84
 
+    /// The camera cutout's diameter and its centre offset from the near end of the strip, exposed so the reserved-region
+    /// overlay marks the occlusion at the same place the bar draws it.
+    static var cameraDiameter: CGFloat { Metrics.cameraDiameter }
+    static var cameraCentreOffset: CGFloat { Metrics.cameraCentreOffset }
+
     /// Where the camera cutout sits, driven by the pose. It is fixed to the hardware, so it rotates with the device;
     /// the inner display's camera is under-display and never shows.
     enum CameraPlacement {

@@ -129,6 +129,7 @@ corners, no Duo side controls.
 | Override `UIScreen.bounds` | Off | Reports the frame size from `UIScreen.bounds` (can misplace the keyboard and alerts) |
 | Simulate vertical bars | On | Hides the system bars and draws the Duo side strip with the rehomed items |
 | Adapt status glyph colours | Off | Samples the content under the clock and network glyphs to flip them black or white; re-renders the app content on each sample, so it carries a CPU cost |
+| Show reserved regions | Off | Stripes the camera occlusion and fold keep-out zones as a guide, without changing the layout; the fold is a static marker since the simulator can't fold |
 
 ### Fit
 

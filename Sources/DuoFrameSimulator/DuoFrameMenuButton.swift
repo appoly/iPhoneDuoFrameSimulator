@@ -199,6 +199,12 @@ final class DuoFrameMenuButton: UIButton {
                     subtitle: "Samples content under the clock/network to flip black·white; costs CPU",
                     keyPath: \.adaptsStatusColours,
                     enabled: hasSideEdge && settings.simulatesVerticalBars
+                ),
+                toggle(
+                    "Show reserved regions",
+                    subtitle: "Stripes the camera and fold keep-out zones (the fold is a static guide)",
+                    keyPath: \.showsReservedRegions,
+                    enabled: isFramed
                 )
             ]
         )

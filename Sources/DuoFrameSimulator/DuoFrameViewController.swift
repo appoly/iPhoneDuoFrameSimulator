@@ -242,7 +242,8 @@ final class DuoFrameViewController: UIViewController {
         applySafeArea(target: geometry.safeAreaInsets.scaled(geometry.zoom), footprint: footprint, metrics: metrics)
         chrome.show(
             outline: footprint, radii: geometry.cornerRadii.scaled(metrics.scale),
-            caption: statusSummary(scale: metrics.contentScale), companion: nil, companionRadii: nil
+            caption: statusSummary(scale: metrics.contentScale), companion: nil, companionRadii: nil,
+            reservedRegions: reservedRegionPaths(geometry: geometry, footprint: footprint, contentScale: metrics.contentScale)
         )
         updateVerticalBar(geometry: geometry, footprint: footprint, contentScale: metrics.contentScale)
     }
@@ -270,9 +271,44 @@ final class DuoFrameViewController: UIViewController {
             .scaled(scale)
         chrome.show(
             outline: appPane, radii: geometry.cornerRadii.scaled(scale),
-            caption: statusSummary(scale: metrics.contentScale), companion: companion, companionRadii: companionRadii
+            caption: statusSummary(scale: metrics.contentScale), companion: companion, companionRadii: companionRadii,
+            reservedRegions: reservedRegionPaths(geometry: geometry, footprint: appPane, contentScale: metrics.contentScale)
         )
         updateVerticalBar(geometry: geometry, footprint: appPane, contentScale: metrics.contentScale)
+    }
+
+    /// Paths, in chrome-window coordinates, for the reserved regions to stripe: the outer camera occlusion (positioned
+    /// like the drawn cutout) and a full inner display's fold crease (a static guide, since the sim can't fold). Empty
+    /// unless the overlay is switched on.
+    private func reservedRegionPaths(geometry: DuoFrameGeometry, footprint: CGRect, contentScale: CGFloat) -> [CGPath] {
+        guard settings.showsReservedRegions else { return [] }
+        var paths: [CGPath] = []
+
+        if let edge = geometry.sideEdge {
+            let offset: CGFloat?
+            switch cameraPlacement(for: geometry) {
+            case .top: offset = footprint.minY + DuoFrameVerticalBar.cameraCentreOffset * contentScale
+            case .bottom: offset = footprint.maxY - DuoFrameVerticalBar.cameraCentreOffset * contentScale
+            case .hidden: offset = nil
+            }
+            if let centreY = offset {
+                let diameter = DuoFrameVerticalBar.cameraDiameter * contentScale
+                let stripWidth = DuoFrameVerticalBar.width * contentScale
+                let centreX = edge.isRight ? footprint.maxX - stripWidth / 2 : footprint.minX + stripWidth / 2
+                let rect = CGRect(x: centreX - diameter / 2, y: centreY - diameter / 2, width: diameter, height: diameter)
+                paths.append(CGPath(ellipseIn: rect, transform: nil))
+            }
+        }
+
+        if let horizontal = geometry.preset.foldIsHorizontal {
+            let band = DuoFrameInsets.foldBand * contentScale
+            let rect = horizontal
+                ? CGRect(x: footprint.minX, y: footprint.midY - band / 2, width: footprint.width, height: band)
+                : CGRect(x: footprint.midX - band / 2, y: footprint.minY, width: band, height: footprint.height)
+            paths.append(CGPath(rect: rect, transform: nil))
+        }
+
+        return paths
     }
 
     /// Sizes the app window to the footprint. The window's bounds are the (zoomed) layout size, a scale transform
@@ -458,6 +494,7 @@ private final class DuoFrameChromeViewController: UIViewController {
     private let caption = UILabel()
     private let companion = DuoFrameCompanionView()
     private let companionMaskLayer = CAShapeLayer()
+    private let reservedRegionsView = DuoFrameReservedRegionsView()
     private let menuButton: DuoFrameMenuButton
     var onSafeAreaChange: (() -> Void)?
 
@@ -527,7 +564,11 @@ private final class DuoFrameChromeViewController: UIViewController {
         caption.isUserInteractionEnabled = false
         view.addSubview(caption)
 
-        // The button positions itself (draggable, edge-snapped, persisted), so it manages its own frame.
+        reservedRegionsView.frame = view.bounds
+        view.addSubview(reservedRegionsView)
+
+        // The button positions itself (draggable, edge-snapped, persisted), so it manages its own frame. Added last so
+        // it stays above the reserved-region overlay.
         menuButton.isHidden = !DuoFrameSimulator.showsButtonByDefault
         view.addSubview(menuButton)
     }
@@ -542,6 +583,7 @@ private final class DuoFrameChromeViewController: UIViewController {
         outlineLayer.isHidden = true
         caption.isHidden = true
         companion.isHidden = true
+        reservedRegionsView.regions = []
     }
 
     func show(
@@ -549,12 +591,15 @@ private final class DuoFrameChromeViewController: UIViewController {
         radii: DuoFrameCornerRadii,
         caption text: String,
         companion companionRect: CGRect?,
-        companionRadii: DuoFrameCornerRadii?
+        companionRadii: DuoFrameCornerRadii?,
+        reservedRegions: [CGPath]
     ) {
         loadViewIfNeeded()
         setMask(outlineLayer, path: radii.path(in: outline), frame: view.bounds)
         outlineLayer.isHidden = false
         layoutCaption(text: text, footprint: outline)
+        reservedRegionsView.frame = view.bounds
+        reservedRegionsView.regions = reservedRegions
         if let companionRect, let companionRadii {
             companion.frame = companionRect
             setMask(companionMaskLayer, path: companionRadii.path(in: companion.bounds), frame: companion.bounds)

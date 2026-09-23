@@ -58,6 +58,16 @@ enum DuoFramePreset: String, Codable, CaseIterable {
         }
     }
 
+    /// Whether a full inner display's fold crease runs horizontally (the tall pose) or vertically (the wide one), or
+    /// `nil` where the tool models no fold guide (outer displays, split panes, other devices).
+    var foldIsHorizontal: Bool? {
+        switch self {
+        case .innerPortrait: true
+        case .innerLandscape: false
+        case .off, .outerLandscape, .outerPortrait, .innerSplitHalf, .otherDevice: nil
+        }
+    }
+
     // Split View halves' size classes are unpublished; compact width follows the iPad precedent.
     func sizeClasses(for size: CGSize) -> (horizontal: UIUserInterfaceSizeClass, vertical: UIUserInterfaceSizeClass) {
         switch self {
@@ -119,6 +129,8 @@ enum DuoFrameInsets {
     static let sideControlsHomeIndicator: CGFloat = 34
     static let portraitStatusBar: CGFloat = 82
     static let portraitHomeIndicator: CGFloat = 34
+    /// The fold division band's thickness (measured partially folded on the 27.1 Duo simulator).
+    static let foldBand: CGFloat = 40
 
     static let portrait = UIEdgeInsets(top: portraitStatusBar, left: 0, bottom: portraitHomeIndicator, right: 0)
 }
@@ -160,6 +172,9 @@ struct DuoFrameSettings: Codable, Equatable {
     /// Swizzles `UIScreen.bounds` to the frame's layout size. Off by default: UIKit sizes its own windows (keyboard,
     /// alerts) from it too, so a mismatch with the real window can misplace those.
     var overridesScreenBounds = false
+    /// Stripes the Duo's reserved regions (camera occlusion, fold crease) as a keep-out guide, without changing the
+    /// layout. Off by default.
+    var showsReservedRegions = false
 
     private static let defaultsKey = "DuoFrameSimulator.settings"
 

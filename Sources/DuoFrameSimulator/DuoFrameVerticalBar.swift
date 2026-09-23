@@ -235,23 +235,11 @@ final class DuoFrameVerticalBar: UIView {
         // Follow the frontmost full-screen presentation: on a Duo a full-screen cover replaces the display, so the
         // strip reflects the cover's own bars (its tabs, its navigation), not the app's underneath. A sheet is a
         // shaped surface that keeps its own bars, so the walk stops before it.
-        let containers = Self.onScreenContainers(in: Self.frontmostFullScreen(from: root))
+        let containers = root.duoFrameFrontmostFullScreen.duoFrameOnScreenContainers
         tabBarController = containers.lazy.compactMap { $0 as? UITabBarController }.first
         navigationController = containers.reversed().lazy.compactMap { $0 as? UINavigationController }.first
         hideBars()
         rebuildIfNeeded()
-    }
-
-    /// The deepest full-screen presentation above `controller`, or `controller` itself when nothing full-screen is
-    /// presented. Sheets and popovers stop the walk.
-    private static func frontmostFullScreen(from controller: UIViewController) -> UIViewController {
-        var top = controller
-        while let presented = top.presentedViewController,
-              !presented.isBeingDismissed,
-              presented.duoFrameIsFullScreenPresentation {
-            top = presented
-        }
-        return top
     }
 
     // MARK: - Adaptive glyph colour
@@ -322,26 +310,12 @@ final class DuoFrameVerticalBar: UIView {
         )
     }
 
-    /// Container controllers whose views are on screen, in hierarchy order, so the last navigation controller is the
-    /// one driving the visible screen.
-    private static func onScreenContainers(in controller: UIViewController) -> [UIViewController] {
-        guard controller.isViewLoaded, controller.view.window != nil else { return [] }
-        var result: [UIViewController] = []
-        if controller is UITabBarController || controller is UINavigationController {
-            result.append(controller)
-        }
-        for child in controller.children {
-            result += onScreenContainers(in: child)
-        }
-        return result
-    }
-
     // MARK: - Hiding the real bars
 
     private func hideBars() {
         restoreBars(keepingTabBar: tabBarController, navigationBar: navigationController, toolbar: navigationController)
-        if let tabBarController, !isTabBarHidden(tabBarController) {
-            setTabBar(hidden: true, on: tabBarController)
+        if let tabBarController, !tabBarController.duoFrameIsTabBarHidden {
+            tabBarController.duoFrameIsTabBarHidden = true
             hiddenTabBarController = tabBarController
         }
         if let navigationController, !navigationController.isNavigationBarHidden {
@@ -361,7 +335,7 @@ final class DuoFrameVerticalBar: UIView {
         toolbar: UINavigationController?
     ) {
         if let hiddenTabBarController, hiddenTabBarController !== tabBar {
-            setTabBar(hidden: false, on: hiddenTabBarController)
+            hiddenTabBarController.duoFrameIsTabBarHidden = false
             self.hiddenTabBarController = nil
         }
         if let hiddenNavigationBarController, hiddenNavigationBarController !== navigationBar {
@@ -371,21 +345,6 @@ final class DuoFrameVerticalBar: UIView {
         if let hiddenToolbarController, hiddenToolbarController !== toolbar {
             hiddenToolbarController.setToolbarHidden(false, animated: false)
             self.hiddenToolbarController = nil
-        }
-    }
-
-    private func isTabBarHidden(_ tabBarController: UITabBarController) -> Bool {
-        if #available(iOS 18, *) {
-            return tabBarController.isTabBarHidden
-        }
-        return tabBarController.tabBar.isHidden
-    }
-
-    private func setTabBar(hidden: Bool, on tabBarController: UITabBarController) {
-        if #available(iOS 18, *) {
-            tabBarController.isTabBarHidden = hidden
-        } else {
-            tabBarController.tabBar.isHidden = hidden
         }
     }
 
@@ -493,7 +452,7 @@ final class DuoFrameVerticalBar: UIView {
     // MARK: - Making views
 
     private func makeGroup(_ views: [UIView]) -> UIView {
-        let glass = Self.makeGlass()
+        let glass = UIVisualEffectView.duoFrameGlass(fallbackRadius: Metrics.itemSide / 2)
         let stack = UIStackView(arrangedSubviews: views)
         stack.axis = .vertical
         stack.translatesAutoresizingMaskIntoConstraints = false
@@ -505,20 +464,6 @@ final class DuoFrameVerticalBar: UIView {
             stack.trailingAnchor.constraint(equalTo: glass.contentView.trailingAnchor),
             glass.widthAnchor.constraint(equalToConstant: Metrics.itemSide)
         ])
-        return glass
-    }
-
-    private static func makeGlass() -> UIVisualEffectView {
-        let glass: UIVisualEffectView
-        if #available(iOS 26, *) {
-            glass = UIVisualEffectView(effect: UIGlassEffect())
-            glass.cornerConfiguration = .capsule()
-        } else {
-            glass = UIVisualEffectView(effect: UIBlurEffect(style: .systemChromeMaterial))
-            glass.clipsToBounds = true
-            glass.layer.cornerRadius = Metrics.itemSide / 2
-        }
-        glass.translatesAutoresizingMaskIntoConstraints = false
         return glass
     }
 
@@ -571,7 +516,7 @@ final class DuoFrameVerticalBar: UIView {
         let button = Self.makeCircleButton()
         var configuration = button.configuration ?? .plain()
         if let image = item.image {
-            configuration.image = Self.fitted(image, to: 24)
+            configuration.image = image.duoFrameFitted(to: 24)
         } else {
             configuration.title = item.title
             configuration.titleTextAttributesTransformer = UIConfigurationTextAttributesTransformer { attributes in
@@ -606,7 +551,7 @@ final class DuoFrameVerticalBar: UIView {
         let button = Self.makeCircleButton()
         var configuration = button.configuration ?? .plain()
         let image = selected ? item.selectedImage ?? item.image : item.image
-        configuration.image = image.map { Self.fitted($0, to: 26) }
+        configuration.image = image?.duoFrameFitted(to: 26)
         configuration.baseForegroundColor = selected ? tabBarController?.tabBar.tintColor ?? tintColor : .label
         if selected {
             configuration.background.backgroundColor = UIColor.label.withAlphaComponent(0.1)
@@ -622,27 +567,8 @@ final class DuoFrameVerticalBar: UIView {
     }
 
     private func selectTab(_ index: Int) {
-        guard let tabBarController else { return }
-        if #available(iOS 18, *), tabBarController.tabs.indices.contains(index) {
-            tabBarController.selectedTab = tabBarController.tabs[index]
-        } else if let controllers = tabBarController.viewControllers, controllers.indices.contains(index) {
-            tabBarController.selectedIndex = index
-        }
-        let tabBar = tabBarController.tabBar
-        if let items = tabBar.items, items.indices.contains(index) {
-            tabBar.delegate?.tabBar?(tabBar, didSelect: items[index])
-        }
+        tabBarController?.duoFrameSelectTab(at: index)
         refresh()
-    }
-
-    private static func fitted(_ image: UIImage, to side: CGFloat) -> UIImage {
-        let scale = min(side / max(image.size.width, 1), side / max(image.size.height, 1), 1)
-        guard scale < 1 else { return image }
-        let size = CGSize(width: image.size.width * scale, height: image.size.height * scale)
-        let scaled = UIGraphicsImageRenderer(size: size).image { _ in
-            image.draw(in: CGRect(origin: .zero, size: size))
-        }
-        return scaled.withRenderingMode(image.renderingMode)
     }
 
     // MARK: - Layout

@@ -53,6 +53,7 @@ struct ContentView: View {
     @State private var current: PoseMetrics?
     @State private var hingeStatus = "unknown"
     @State private var hingeAngle: Double?
+    @State private var isBarsProbePresented = false
 
     var body: some View {
         GeometryReader { proxy in
@@ -62,6 +63,8 @@ struct ContentView: View {
                     Text("Poses captured: \(store.count)").font(.headline)
                     Text("Cycle every pose in Device Hub. Each writes to Documents/duo-metrics.json.")
                         .font(.footnote).foregroundStyle(.secondary)
+                    Button("Bars probe") { isBarsProbePresented = true }
+                        .buttonStyle(.borderedProminent)
                     Divider()
                     if let current {
                         Text(summary(current)).font(.system(.footnote, design: .monospaced))
@@ -95,6 +98,7 @@ struct ContentView: View {
             }
         }
         .ignoresSafeArea(.container, edges: [])
+        .fullScreenCover(isPresented: $isBarsProbePresented) { BarsProbeView() }
     }
 
     private func capture(_ proxy: GeometryProxy) {

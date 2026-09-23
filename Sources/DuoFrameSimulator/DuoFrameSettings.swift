@@ -50,6 +50,13 @@ enum DuoFramePreset: String, Codable, CaseIterable {
         }
     }
 
+    var usesBottomTabBar: Bool {
+        switch self {
+        case .innerPortrait: true
+        case .off, .outerLandscape, .outerPortrait, .innerLandscape, .innerSplitHalf, .otherDevice: false
+        }
+    }
+
     /// True where the pose shares the inner display with a second app, so the tool draws a companion pane.
     var isSplit: Bool {
         switch self {

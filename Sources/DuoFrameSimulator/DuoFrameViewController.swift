@@ -29,6 +29,7 @@ final class DuoFrameViewController: UIViewController {
     private lazy var menuButton = DuoFrameMenuButton(controller: self)
     private lazy var chrome = DuoFrameChromeViewController(menuButton: menuButton)
     private let verticalBar = DuoFrameVerticalBar()
+    private let tabBar = DuoFrameTabBar()
     private let shield: DuoFrameShieldViewController
     private var chromeWindow: UIWindow?
     private var appliedScale: CGFloat = 1
@@ -252,6 +253,7 @@ final class DuoFrameViewController: UIViewController {
             DuoFramePresentationOverride.framedWindow = nil
             chrome.clear()
             verticalBar.detach()
+            tabBar.detach()
             appliedScale = 1
             return
         }
@@ -292,7 +294,7 @@ final class DuoFrameViewController: UIViewController {
             caption: statusSummary(scale: metrics.contentScale), companion: nil, companionRadii: nil,
             reservedRegions: reservedRegionPaths(geometry: geometry, footprint: footprint, contentScale: metrics.contentScale)
         )
-        updateVerticalBar(geometry: geometry, footprint: footprint, contentScale: metrics.contentScale)
+        updateBars(geometry: geometry, footprint: footprint, contentScale: metrics.contentScale)
     }
 
     private func frameSplit(window: UIWindow, geometry: DuoFrameGeometry, stage: CGSize, metrics: FrameMetrics) {
@@ -321,7 +323,7 @@ final class DuoFrameViewController: UIViewController {
             caption: statusSummary(scale: metrics.contentScale), companion: companion, companionRadii: companionRadii,
             reservedRegions: reservedRegionPaths(geometry: geometry, footprint: appPane, contentScale: metrics.contentScale)
         )
-        updateVerticalBar(geometry: geometry, footprint: appPane, contentScale: metrics.contentScale)
+        updateBars(geometry: geometry, footprint: appPane, contentScale: metrics.contentScale)
     }
 
     /// Paths, in chrome-window coordinates, for the reserved regions to stripe: the outer camera occlusion (positioned
@@ -424,6 +426,14 @@ final class DuoFrameViewController: UIViewController {
     /// presentation. It's laid out in the content's point space (bounds in layout points, so its internal metrics match
     /// the framed content), then scaled by the content scale and centred on the footprint's controls edge in screen
     /// points.
+    /// Both stand-ins hide the same real tab bar, so the one leaving detaches (restoring it) before the other attaches.
+    private func updateBars(geometry: DuoFrameGeometry, footprint: CGRect, contentScale: CGFloat) {
+        let usesTabBar = geometry.preset.usesBottomTabBar
+        if !usesTabBar { tabBar.detach() }
+        updateVerticalBar(geometry: geometry, footprint: footprint, contentScale: contentScale)
+        if usesTabBar { tabBar.attach(to: root) }
+    }
+
     private func updateVerticalBar(geometry: DuoFrameGeometry, footprint: CGRect, contentScale: CGFloat) {
         guard let edge = geometry.sideEdge else {
             verticalBar.detach()

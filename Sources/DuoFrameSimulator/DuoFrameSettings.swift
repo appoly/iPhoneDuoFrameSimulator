@@ -50,7 +50,7 @@ enum DuoFramePreset: String, Codable, CaseIterable {
         }
     }
 
-    var usesBottomTabBar: Bool {
+    var keepsHorizontalBars: Bool {
         switch self {
         case .innerPortrait: true
         case .off, .outerLandscape, .outerPortrait, .innerLandscape, .innerSplitHalf, .otherDevice: false

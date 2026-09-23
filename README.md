@@ -27,8 +27,9 @@ compiles to nothing in release builds.
 - **Reframes the window, not the content**, so `.sheet`, `.fullScreenCover`, alerts and popovers land inside the
   footprint too.
 - **Match physical size**, **Display Zoom** and **Override `UIScreen.bounds`** for the awkward edge cases.
-- **Cosmetic Duo bars**: a Duo-style side strip with a fake Dynamic Island, live clock, status glyphs and your
-  app's real nav and tab items, rehomed and still interactive; in inner portrait, a Duo-style bottom tab bar.
+- **Cosmetic Duo bars**: a Duo-style side strip with a fake Dynamic Island, a frosted clock-and-network pill and
+  your app's real nav and tab items, rehomed and still interactive; in inner portrait, the pill in the top corner
+  and a Duo-style bottom tab bar.
   Both stand in for the real bars whatever style the host device gave them.
 - **Draggable menu button** that snaps to any edge, hidden behind a shake gesture, off by default in release.
 
@@ -172,15 +173,17 @@ and the window, so the child inherits the window's own insets normally.
 <summary><b>Vertical bars, corners and the camera cutout</b></summary>
 
 **Vertical bars.** With side controls on a pose, the strip draws a fake Dynamic Island, the clock and the
-combined Wi-Fi/cellular glyph (camera and status-cluster metrics measured on the 27.1 simulator; the nav/tab item
-spacing is still from Apple's HIG screenshots), then the nav bar's items, then the tab bar's items bottom-aligned. The buttons drive the real controllers, including
+combined Wi-Fi/cellular glyph on a frosted pill (camera and status-cluster metrics measured on the 27.1 simulator;
+the nav/tab item spacing is still from Apple's HIG screenshots), then the nav bar's items, then the tab bar's items
+bottom-aligned, all on a column 48 pt in from the display edge. The buttons drive the real controllers, including
 SwiftUI's native `TabView`, so tab switching genuinely selects. Every pose puts the controls on a side edge
 except the inner display in portrait, the one HIG exception, which keeps horizontal bars.
 
-**Inner-portrait tab bar.** The real navigation bar stays; the tab bar is replaced by a floating pill of
-icon-over-title items with every tab showing, sized and placed as measured on the 27.1 simulator (86 pt apart for
-up to three tabs, otherwise sharing a 400 pt pill). It sits in the tab bar controller's own view, so sheets and
-covers stack over it, and it tops the content's bottom safe area up to the bar's 83 pt band.
+**Inner portrait.** The clock and network glyph sit side by side on their pill in the top trailing corner. The
+real navigation bar stays; the tab bar is replaced by a floating pill of icon-over-title items with every tab
+showing, sized and placed as measured on the 27.1 simulator (86 pt apart for up to three tabs, otherwise sharing a
+400 pt pill). It sits in the tab bar controller's own view, so sheets and covers stack over it, and it tops the
+content's bottom safe area up to the bar's 83 pt band.
 
 **Split-view companion.** The inner Split View half draws the *other* app as a gradient placeholder pane on the
 opposite side, with a gutter between them. Each app keeps its controls on its outer edge, and both flip when you

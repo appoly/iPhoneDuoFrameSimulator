@@ -156,6 +156,7 @@ final class DuoFrameMenuButton: UIButton {
         let isFramed = settings.geometry != nil
         let usesSideControls = settings.geometry.map { $0.preset.usesSideControls(for: $0.size) } ?? false
         let hasSideEdge = settings.geometry?.sideEdge != nil
+        let hasStatusCluster = hasSideEdge || settings.preset.keepsHorizontalBars
 
         let sideEdges = UIMenu(
             title: "Side controls",
@@ -199,7 +200,7 @@ final class DuoFrameMenuButton: UIButton {
                     "Adapt status glyph colours",
                     subtitle: "Samples content under the clock/network to flip black·white; costs CPU",
                     keyPath: \.adaptsStatusColours,
-                    enabled: hasSideEdge
+                    enabled: hasStatusCluster
                 ),
                 toggle(
                     "Show reserved regions",

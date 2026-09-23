@@ -30,6 +30,7 @@ final class DuoFrameViewController: UIViewController {
     private lazy var chrome = DuoFrameChromeViewController(menuButton: menuButton)
     private let verticalBar = DuoFrameVerticalBar()
     private let tabBar = DuoFrameTabBar()
+    private let cornerStatus = DuoFrameStatusCluster()
     private let shield: DuoFrameShieldViewController
     private var chromeWindow: UIWindow?
     private var appliedScale: CGFloat = 1
@@ -254,6 +255,7 @@ final class DuoFrameViewController: UIViewController {
             chrome.clear()
             verticalBar.detach()
             tabBar.detach()
+            cornerStatus.removeFromSuperview()
             appliedScale = 1
             return
         }
@@ -342,8 +344,8 @@ final class DuoFrameViewController: UIViewController {
             }
             if let centreY = offset {
                 let diameter = DuoFrameVerticalBar.cameraDiameter * contentScale
-                let stripWidth = DuoFrameVerticalBar.width * contentScale
-                let centreX = edge.isRight ? footprint.maxX - stripWidth / 2 : footprint.minX + stripWidth / 2
+                let inset = DuoFrameVerticalBar.columnInset * contentScale
+                let centreX = edge.isRight ? footprint.maxX - inset : footprint.minX + inset
                 let rect = CGRect(x: centreX - diameter / 2, y: centreY - diameter / 2, width: diameter, height: diameter)
                 paths.append(CGPath(ellipseIn: rect, transform: nil))
             }
@@ -428,10 +430,31 @@ final class DuoFrameViewController: UIViewController {
     /// points.
     /// Both stand-ins hide the same real tab bar, so the one leaving detaches (restoring it) before the other attaches.
     private func updateBars(geometry: DuoFrameGeometry, footprint: CGRect, contentScale: CGFloat) {
-        let usesTabBar = geometry.preset.usesBottomTabBar
+        let usesTabBar = geometry.preset.keepsHorizontalBars
         if !usesTabBar { tabBar.detach() }
         updateVerticalBar(geometry: geometry, footprint: footprint, contentScale: contentScale)
         if usesTabBar { tabBar.attach(to: root) }
+        updateCornerStatus(geometry: geometry, footprint: footprint, contentScale: contentScale)
+    }
+
+    /// Where the bars stay horizontal, the status cluster sits in the top trailing corner, its ring centred as far in
+    /// from both edges as the side strip's column is from its edge. Laid out in layout points, like the strip.
+    private func updateCornerStatus(geometry: DuoFrameGeometry, footprint: CGRect, contentScale: CGFloat) {
+        guard geometry.preset.keepsHorizontalBars else {
+            cornerStatus.removeFromSuperview()
+            return
+        }
+        if cornerStatus.superview !== chrome.view {
+            chrome.view.insertSubview(cornerStatus, at: 0)
+        }
+        cornerStatus.sampledView = view.window
+        cornerStatus.setColourAdaptation(settings.adaptsStatusColours)
+        cornerStatus.transform = .identity
+        cornerStatus.bounds = CGRect(origin: .zero, size: geometry.layoutSize)
+        cornerStatus.transform = CGAffineTransform(scaleX: contentScale, y: contentScale)
+        cornerStatus.center = CGPoint(x: footprint.midX, y: footprint.midY)
+        let inset = DuoFrameVerticalBar.columnInset
+        cornerStatus.place(ring: CGPoint(x: geometry.layoutSize.width - inset, y: inset), axis: .horizontal)
     }
 
     private func updateVerticalBar(geometry: DuoFrameGeometry, footprint: CGRect, contentScale: CGFloat) {
@@ -442,6 +465,7 @@ final class DuoFrameViewController: UIViewController {
         if verticalBar.superview == nil {
             verticalBar.attach(to: root, in: chrome.view)
         }
+        verticalBar.isOnRightEdge = edge.isRight
         verticalBar.setColourAdaptation(settings.adaptsStatusColours)
         verticalBar.transform = .identity
         verticalBar.bounds = CGRect(x: 0, y: 0, width: DuoFrameVerticalBar.width, height: geometry.layoutSize.height)

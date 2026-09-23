@@ -18,6 +18,17 @@ final class DuoFrameVerticalBar: UIView {
     /// the framed content clears, are both 84 pt.
     static let width: CGFloat = 84
 
+    /// The strip's column (camera, status, items) is centred this far from the display's outer edge, not mid-strip.
+    static let columnInset: CGFloat = 48
+
+    var isOnRightEdge = true {
+        didSet {
+            guard isOnRightEdge != oldValue else { return }
+            updateStackConstraints()
+            setNeedsLayout()
+        }
+    }
+
     /// The camera cutout's diameter and its centre offset from the near end of the strip, exposed so the reserved-region
     /// overlay marks the occlusion at the same place the bar draws it.
     static var cameraDiameter: CGFloat { Metrics.cameraDiameter }
@@ -39,25 +50,20 @@ final class DuoFrameVerticalBar: UIView {
         }
     }
 
-    // The camera diameter and the strip width are measured on the 27.1 Duo simulator (camera occlusion region 37×37,
-    // strip width 84). The clock/network offsets are still read from the HIG "Designing for iPhone Duo" screenshots;
-    // offsets are from the near end (top or bottom) of the status cluster.
+    // Measured on the 27.1 Duo simulator (camera occlusion region 37×37 at 29 pt, strip width 84, network ring centre
+    // 130 below the camera or 77.3 without it, status pill 21 pt in from the edge). Item spacing is from the HIG.
     private enum Metrics {
         static let itemSide: CGFloat = 50
         static let groupSpacing: CGFloat = 8
         static let cameraDiameter: CGFloat = 37
-        static let cameraEdgeInset: CGFloat = 28
+        static let cameraEdgeInset: CGFloat = 29
         static let cameraCentreOffset: CGFloat = cameraEdgeInset + cameraDiameter / 2
-        static let clockCentreOffset: CGFloat = 92
-        static let networkCentreOffset: CGFloat = 131
-        static let networkSide: CGFloat = 42
+        static let networkCentreOffset: CGFloat = 130
+        static let noCameraNetworkCentre: CGFloat = 77.3
+        static let statusPillInset: CGFloat = 21
         static let statusToItemsGap: CGFloat = 21
         static let topMargin: CGFloat = 24
         static let bottomMargin: CGFloat = 24
-        // With no camera, the clock and network slide up into the vacated corner. Measured on the 27.1 Duo simulator
-        // (inner landscape): clock centre 40, network centre 73.
-        static let noCameraClockCentre: CGFloat = 40
-        static let noCameraNetworkCentre: CGFloat = 73
     }
 
     private(set) var isAttached = false
@@ -69,28 +75,12 @@ final class DuoFrameVerticalBar: UIView {
     private weak var hiddenNavigationBarController: UINavigationController?
     private weak var hiddenToolbarController: UINavigationController?
     private var refreshTimer: Timer?
-    private var colourTimer: Timer?
     private var contentSignature = ""
-    private var clockPrefersDark: Bool?
-    private var networkPrefersDark: Bool?
-
-    /// How often the clock and network glyphs re-sample the content beneath them. Faster tracks scrolling more closely
-    /// but each tick renders the app content, so it trades against CPU.
-    private static let colourSampleInterval: TimeInterval = 0.12
-    fileprivate static let darkForegroundLuminance: CGFloat = 0.6
 
     private let camera = UIView()
-    private let clock = UILabel()
-    private let network = DuoFrameNetworkGlyph()
+    private let status = DuoFrameStatusCluster()
     private let topStack = UIStackView()
     private let bottomStack = UIStackView()
-    private let clockFormatter: DateFormatter = {
-        let formatter = DateFormatter()
-        formatter.setLocalizedDateFormatFromTemplate("jmm")
-        formatter.amSymbol = ""
-        formatter.pmSymbol = ""
-        return formatter
-    }()
 
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -100,39 +90,34 @@ final class DuoFrameVerticalBar: UIView {
         camera.isUserInteractionEnabled = false
         camera.layer.cornerRadius = Metrics.cameraDiameter / 2
 
-        // Monospaced digits so the label's width is stable as the minutes change and the text never truncates.
-        clock.font = .monospacedDigitSystemFont(ofSize: 16, weight: .semibold)
-        clock.textColor = .label
-        clock.textAlignment = .center
-        clock.isUserInteractionEnabled = false
-
-        network.isUserInteractionEnabled = false
-
-        // The status glyphs are positioned by frame (the cluster moves to the camera's end); the two item stacks keep
-        // Auto Layout, their end anchors driven by the placement.
+        // The status cluster is positioned by frame (it moves to the camera's end); the two item stacks keep Auto
+        // Layout, their end anchors driven by the placement.
         for stack in [topStack, bottomStack] {
             stack.axis = .vertical
             stack.alignment = .center
             stack.spacing = Metrics.groupSpacing
             stack.translatesAutoresizingMaskIntoConstraints = false
         }
-        for view in [camera, clock, network, topStack, bottomStack] {
+        for view in [status, camera, topStack, bottomStack] {
             addSubview(view)
         }
         camera.bounds = CGRect(x: 0, y: 0, width: Metrics.cameraDiameter, height: Metrics.cameraDiameter)
-        network.bounds = CGRect(x: 0, y: 0, width: Metrics.networkSide, height: Metrics.networkSide)
 
         topStackTop = topStack.topAnchor.constraint(equalTo: topAnchor, constant: statusZoneHeight)
         bottomStackBottom = bottomStack.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -Metrics.bottomMargin)
-        NSLayoutConstraint.activate([
-            topStack.centerXAnchor.constraint(equalTo: centerXAnchor),
-            bottomStack.centerXAnchor.constraint(equalTo: centerXAnchor),
-            topStackTop, bottomStackBottom
-        ])
+        topStackCentre = topStack.centerXAnchor.constraint(equalTo: leadingAnchor, constant: columnX)
+        bottomStackCentre = bottomStack.centerXAnchor.constraint(equalTo: leadingAnchor, constant: columnX)
+        NSLayoutConstraint.activate([topStackCentre, bottomStackCentre, topStackTop, bottomStackBottom])
     }
 
     private var topStackTop: NSLayoutConstraint!
     private var bottomStackBottom: NSLayoutConstraint!
+    private var topStackCentre: NSLayoutConstraint!
+    private var bottomStackCentre: NSLayoutConstraint!
+
+    private var columnX: CGFloat {
+        isOnRightEdge ? Self.width - Self.columnInset : Self.columnInset
+    }
 
     /// The status glyphs and items always read clock, network, nav, tab from the top; the tab bar lifts clear of the
     /// camera only when the camera sits at the bottom. The constants depend only on the placement, so they update
@@ -140,6 +125,8 @@ final class DuoFrameVerticalBar: UIView {
     private func updateStackConstraints() {
         topStackTop.constant = statusZoneHeight
         bottomStackBottom.constant = -(cameraPlacement == .bottom ? bottomCameraZone : Metrics.bottomMargin)
+        topStackCentre.constant = columnX
+        bottomStackCentre.constant = columnX
     }
 
     @available(*, unavailable)
@@ -149,7 +136,6 @@ final class DuoFrameVerticalBar: UIView {
 
     deinit {
         refreshTimer?.invalidate()
-        colourTimer?.invalidate()
     }
 
     // MARK: - Attaching
@@ -160,6 +146,7 @@ final class DuoFrameVerticalBar: UIView {
     func attach(to root: UIViewController, in host: UIView) {
         self.root = root
         self.hostView = host
+        status.sampledView = root.view.window
         isAttached = true
         isHidden = false
         host.insertSubview(self, at: 0)
@@ -171,37 +158,9 @@ final class DuoFrameVerticalBar: UIView {
         }
     }
 
-    // MARK: - Colour adaptation
-
-    /// Turns the clock/network colour sampling on or off. Reconciled from the current setting on every layout update,
-    /// so it applies live: enabling starts the sampling timer, disabling stops it and returns the glyphs to `.label`.
     func setColourAdaptation(_ enabled: Bool) {
         guard isAttached else { return }
-        if enabled {
-            startColourSampling()
-        } else {
-            stopColourSampling()
-        }
-    }
-
-    private func startColourSampling() {
-        guard colourTimer == nil else { return }
-        // In `.common` modes so it keeps firing while a finger is down and the run loop is tracking a scroll —
-        // a default-mode timer pauses there, freezing the glyph colour mid-scroll.
-        let timer = Timer(timeInterval: Self.colourSampleInterval, repeats: true) { [weak self] _ in
-            self?.sampleStatusColours()
-        }
-        RunLoop.main.add(timer, forMode: .common)
-        colourTimer = timer
-    }
-
-    private func stopColourSampling() {
-        colourTimer?.invalidate()
-        colourTimer = nil
-        clockPrefersDark = nil
-        networkPrefersDark = nil
-        clock.textColor = .label
-        network.foregroundColor = .label
+        status.setColourAdaptation(enabled)
     }
 
     func detach() {
@@ -210,10 +169,7 @@ final class DuoFrameVerticalBar: UIView {
         hostView = nil
         refreshTimer?.invalidate()
         refreshTimer = nil
-        colourTimer?.invalidate()
-        colourTimer = nil
-        clockPrefersDark = nil
-        networkPrefersDark = nil
+        status.setColourAdaptation(false)
         restoreBars(keepingTabBar: nil, navigationBar: nil, toolbar: nil)
         contentSignature = ""
         removeFromSuperview()
@@ -226,12 +182,6 @@ final class DuoFrameVerticalBar: UIView {
         if let host = hostView, superview !== host {
             host.insertSubview(self, at: 0)
         }
-        let time = clockFormatter.string(from: .now).trimmingCharacters(in: .whitespaces)
-        if clock.text != time {
-            clock.text = time
-            setNeedsLayout()   // re-size and re-centre the label for the new value
-        }
-
         // Follow the frontmost full-screen presentation: on a Duo a full-screen cover replaces the display, so the
         // strip reflects the cover's own bars (its tabs, its navigation), not the app's underneath. A sheet is a
         // shaped surface that keeps its own bars, so the walk stops before it.
@@ -240,74 +190,6 @@ final class DuoFrameVerticalBar: UIView {
         navigationController = containers.reversed().lazy.compactMap { $0 as? UINavigationController }.first
         hideBars()
         rebuildIfNeeded()
-    }
-
-    // MARK: - Adaptive glyph colour
-
-    /// The real status bar picks a dark or light foreground per region from the content beneath it. This mirrors that:
-    /// it samples the app content under the clock and under the network glyph separately and flips each to black or
-    /// white. Both glyphs sit near the top of the strip, so one render of the app content covers them and each is
-    /// averaged from its own sub-rect.
-    private func sampleStatusColours() {
-        guard isAttached, window != nil, let appWindow = root?.view.window else { return }
-        let clockRegion = clock.convert(clock.bounds, to: appWindow).integral
-        let networkRegion = network.convert(network.bounds, to: appWindow).integral
-        let union = clockRegion.union(networkRegion).intersection(appWindow.bounds)
-        guard !union.isNull, union.width >= 1, union.height >= 1,
-              let snapshot = Self.snapshot(of: appWindow, region: union)?.cgImage else { return }
-
-        let clockSub = clockRegion.offsetBy(dx: -union.minX, dy: -union.minY)
-        let networkSub = networkRegion.offsetBy(dx: -union.minX, dy: -union.minY)
-        if let colour = Self.averageColour(of: snapshot, subRect: clockSub) {
-            applyClockForeground(dark: colour.duoPrefersDarkForeground)
-        }
-        if let colour = Self.averageColour(of: snapshot, subRect: networkSub) {
-            applyNetworkForeground(dark: colour.duoPrefersDarkForeground)
-        }
-    }
-
-    /// Crossfade a glyph's foreground only when the resolved black/white choice actually flips, so the fade fires on a
-    /// real change rather than every sample.
-    private func applyClockForeground(dark: Bool) {
-        guard clockPrefersDark != dark else { return }
-        clockPrefersDark = dark
-        UIView.transition(with: clock, duration: 0.25, options: [.transitionCrossDissolve, .allowUserInteraction]) {
-            self.clock.textColor = dark ? .black : .white
-        }
-    }
-
-    private func applyNetworkForeground(dark: Bool) {
-        guard networkPrefersDark != dark else { return }
-        networkPrefersDark = dark
-        UIView.transition(with: network, duration: 0.25, options: [.transitionCrossDissolve, .allowUserInteraction]) {
-            self.network.foregroundColor = dark ? .black : .white
-        }
-    }
-
-    /// Renders just `region` of the view's own (untransformed) hierarchy. `afterScreenUpdates: false` reuses the last
-    /// rendered frame, which is cheap and fine for sampling.
-    private static func snapshot(of view: UIView, region: CGRect) -> UIImage? {
-        let format = UIGraphicsImageRendererFormat.preferred()
-        format.scale = 1
-        return UIGraphicsImageRenderer(bounds: region, format: format).image { _ in
-            view.drawHierarchy(in: view.bounds, afterScreenUpdates: false)
-        }
-    }
-
-    /// Averages `subRect` (in image points, scale 1) by drawing it into a single pixel and reading it back.
-    private static func averageColour(of image: CGImage, subRect: CGRect) -> UIColor? {
-        let pixels = subRect.integral.intersection(CGRect(x: 0, y: 0, width: image.width, height: image.height))
-        guard pixels.width >= 1, pixels.height >= 1, let crop = image.cropping(to: pixels) else { return nil }
-        var rgba: [UInt8] = [0, 0, 0, 0]
-        guard let context = CGContext(
-            data: &rgba, width: 1, height: 1, bitsPerComponent: 8, bytesPerRow: 4,
-            space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
-        ) else { return nil }
-        context.interpolationQuality = .medium
-        context.draw(crop, in: CGRect(x: 0, y: 0, width: 1, height: 1))
-        return UIColor(
-            red: CGFloat(rgba[0]) / 255, green: CGFloat(rgba[1]) / 255, blue: CGFloat(rgba[2]) / 255, alpha: 1
-        )
     }
 
     // MARK: - Hiding the real bars
@@ -581,11 +463,13 @@ final class DuoFrameVerticalBar: UIView {
         layoutStatusCluster()
     }
 
-    /// Height reserved at the top for the clock and network before the nav items begin. The clock and network sit
-    /// below the camera only when it's at the top, so that pushes them (and the nav items) down.
+    /// The clock and network sit below the camera only when it's at the top, pushing them (and the nav items) down.
+    private var networkCentre: CGFloat {
+        cameraPlacement == .top ? Metrics.networkCentreOffset : Metrics.noCameraNetworkCentre
+    }
+
     private var statusZoneHeight: CGFloat {
-        let networkCentre = cameraPlacement == .top ? Metrics.networkCentreOffset : Metrics.noCameraNetworkCentre
-        return networkCentre + Metrics.networkSide / 2 + Metrics.statusToItemsGap
+        networkCentre + DuoFrameStatusCluster.glyphSide / 2 + Metrics.statusToItemsGap
     }
 
     /// Space the bottom tab bar leaves clear for a camera cutout sitting in the bottom corner.
@@ -596,9 +480,9 @@ final class DuoFrameVerticalBar: UIView {
     /// The clock and network always read from the top (clock, network, nav, tab). The camera is a separate cutout at
     /// its physical corner: above the clock when it's at the top, alone in the bottom corner when it's at the bottom.
     private func layoutStatusCluster() {
-        let centreX = bounds.width / 2
+        let centreX = columnX
+        status.frame = bounds
         camera.isHidden = cameraPlacement == .hidden
-        clock.sizeToFit()
         switch cameraPlacement {
         case .top:
             camera.center = CGPoint(x: centreX, y: Metrics.cameraCentreOffset)
@@ -607,10 +491,7 @@ final class DuoFrameVerticalBar: UIView {
         case .hidden:
             break
         }
-        let clockY = cameraPlacement == .top ? Metrics.clockCentreOffset : Metrics.noCameraClockCentre
-        let networkY = cameraPlacement == .top ? Metrics.networkCentreOffset : Metrics.noCameraNetworkCentre
-        clock.center = CGPoint(x: centreX, y: clockY)
-        network.center = CGPoint(x: centreX, y: networkY)
+        status.place(ring: CGPoint(x: centreX, y: networkCentre), axis: .vertical(pillStart: Metrics.statusPillInset))
     }
 
     /// Only the stand-in controls take touches; the rest of the strip lets the app's content underneath receive them.
@@ -647,68 +528,6 @@ private final class DuoFrameCentringBox: UIView {
         super.layoutSubviews()
         wrapped.sizeToFit()
         wrapped.center = CGPoint(x: bounds.midX, y: bounds.midY)
-    }
-}
-
-/// The Duo status bar's combined Wi‑Fi and cellular glyph: a ring open at the bottom, Wi‑Fi inside, signal dots below.
-private final class DuoFrameNetworkGlyph: UIView {
-
-    var foregroundColor: UIColor = .label {
-        didSet {
-            guard foregroundColor != oldValue else { return }
-            wifi.tintColor = foregroundColor
-            setNeedsDisplay()
-        }
-    }
-
-    private static let wifiConfiguration = UIImage.SymbolConfiguration(pointSize: 12, weight: .semibold)
-    private let wifi = UIImageView(image: UIImage(systemName: "wifi", withConfiguration: wifiConfiguration))
-
-    override init(frame: CGRect) {
-        super.init(frame: frame)
-        backgroundColor = .clear
-        isOpaque = false
-        wifi.tintColor = foregroundColor
-        wifi.contentMode = .center
-        addSubview(wifi)
-    }
-
-    @available(*, unavailable)
-    required init?(coder: NSCoder) {
-        fatalError("DuoFrameNetworkGlyph is created in code only")
-    }
-
-    override func layoutSubviews() {
-        super.layoutSubviews()
-        wifi.frame = CGRect(x: bounds.midX - 12, y: 5.5, width: 24, height: 24)
-    }
-
-    override func draw(_ rect: CGRect) {
-        foregroundColor.setStroke()
-        foregroundColor.setFill()
-        let centre = CGPoint(x: bounds.midX, y: 17)
-        let ring = UIBezierPath(
-            arcCenter: centre, radius: 15, startAngle: 2 * .pi / 3, endAngle: .pi / 3, clockwise: true
-        )
-        ring.lineWidth = 2
-        ring.lineCapStyle = .round
-        ring.stroke()
-        for degrees in [68.0, 83.0, 97.0, 112.0] {
-            let angle = degrees * .pi / 180
-            let dot = CGPoint(x: centre.x + 19 * cos(angle), y: centre.y + 19 * sin(angle))
-            UIBezierPath(ovalIn: CGRect(x: dot.x - 1.4, y: dot.y - 1.4, width: 2.8, height: 2.8)).fill()
-        }
-    }
-}
-
-private extension UIColor {
-    /// True on a light background (wanting a black foreground), false on a dark one — from relative luminance, as the
-    /// status bar picks a legible foreground for the content beneath it.
-    var duoPrefersDarkForeground: Bool {
-        var red: CGFloat = 0, green: CGFloat = 0, blue: CGFloat = 0, alpha: CGFloat = 0
-        getRed(&red, green: &green, blue: &blue, alpha: &alpha)
-        let luminance = 0.2126 * red + 0.7152 * green + 0.0722 * blue
-        return luminance > DuoFrameVerticalBar.darkForegroundLuminance
     }
 }
 #endif

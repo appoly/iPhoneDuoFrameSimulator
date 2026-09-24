@@ -135,7 +135,7 @@ relaunch while it's out of step.
 | Match physical size | Off | Scales the frame so a point renders at the simulated device's real physical size |
 | Always show device bezel | Off | Draws the bezel even where it wouldn't fit, shrinking the frame to make room; otherwise it only appears where it fits around the frame at the frame's own scale |
 | Display Zoom | Off | Lays out at the device's zoomed point size and swizzles `UIScreen.nativeScale` to match |
-| Override `UIScreen.bounds` | Off | Reports the frame size from `UIScreen.bounds` (can misplace the keyboard and alerts) |
+| Override `UIScreen.bounds` | On | Reports the simulated display's size from `UIScreen.bounds` from launch, as the device would, so layout sized from `UIScreen.main` behaves as it will there; a Split View half reports the whole display. Framing off always reports the real screen |
 | Adapt status glyph colours | Off | Samples the content under the clock and network glyphs to flip them black or white; re-renders the app content on each sample, so it carries a CPU cost |
 | Show reserved regions | Off | Stripes the camera occlusion and fold keep-out zones as a guide, without changing the layout; the fold is a static marker since the simulator can't fold |
 

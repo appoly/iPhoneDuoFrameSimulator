@@ -160,6 +160,12 @@ struct DuoFrameGeometry: Equatable {
     var layoutSize: CGSize {
         CGSize(width: size.width * zoom, height: size.height * zoom)
     }
+
+    /// What `UIScreen.bounds` reports on the device: the whole display, which a Split View half only shares.
+    var screenLayoutSize: CGSize {
+        let display = isSplit ? DuoFramePreset.innerLandscape.size(custom: size) ?? size : size
+        return CGSize(width: display.width * zoom, height: display.height * zoom)
+    }
 }
 
 struct DuoFrameSettings: Codable, Equatable {
@@ -177,9 +183,9 @@ struct DuoFrameSettings: Codable, Equatable {
     /// stay `.label`.
     var adaptsStatusColours = false
     var displayZoom = false
-    /// Swizzles `UIScreen.bounds` to the frame's layout size. Off by default: UIKit sizes its own windows (keyboard,
-    /// alerts) from it too, so a mismatch with the real window can misplace those.
-    var overridesScreenBounds = false
+    /// Reports the simulated display's size from `UIScreen.bounds` (the whole display in Split View) while framing, as
+    /// the device would, so layout sized from `UIScreen.main` shows how it behaves there. Framing off leaves it real.
+    var overridesScreenBounds = true
     /// Stripes the Duo's reserved regions (camera occlusion, fold crease) as a keep-out guide, without changing the
     /// layout. Off by default.
     var showsReservedRegions = false

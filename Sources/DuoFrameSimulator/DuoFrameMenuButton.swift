@@ -210,7 +210,7 @@ final class DuoFrameMenuButton: UIButton {
                 ),
                 toggle(
                     "Override UIScreen.bounds",
-                    subtitle: "Reports the frame size; may misplace the keyboard",
+                    subtitle: "For apps sized from UIScreen.main; the whole display in Split View",
                     keyPath: \.overridesScreenBounds,
                     enabled: isFramed
                 ),

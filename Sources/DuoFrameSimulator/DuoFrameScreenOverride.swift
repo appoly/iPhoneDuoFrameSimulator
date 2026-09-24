@@ -26,6 +26,18 @@ enum DuoFrameScreenOverride {
         swizzle(#selector(getter: UIScreen.bounds), with: #selector(UIScreen.duoFrameBounds))
     }
 
+    /// Sets both overrides from `settings`, returning whether either changed.
+    @discardableResult
+    static func apply(_ settings: DuoFrameSettings) -> Bool {
+        let geometry = settings.geometry
+        let newZoom = geometry.flatMap { $0.zoom == 1 ? nil : $0.zoom }
+        let newBounds = settings.overridesScreenBounds ? geometry?.screenLayoutSize : nil
+        let changed = newZoom != zoom || newBounds != bounds
+        zoom = newZoom
+        bounds = newBounds
+        return changed
+    }
+
     /// The host's real value, bypassing the override.
     static func hostNativeScale(of screen: UIScreen) -> CGFloat {
         isInstalled ? screen.duoFrameNativeScale() : screen.nativeScale

@@ -36,7 +36,6 @@ final class DuoFrameViewController: UIViewController {
     private let backdrop = DuoFrameBackdropViewController()
     private var backdropWindow: UIWindow?
     private var appliedScale: CGFloat = 1
-    private var hasAppliedScreenOverrides = false
     private var isFramingWindow = false
     private var isWindowFramed = false
     private var hostStatusBarInset: CGFloat = 0
@@ -197,17 +196,10 @@ final class DuoFrameViewController: UIViewController {
     }
 
     private func applyScreenOverrides() {
-        let geometry = settings.geometry
-        let zoom = geometry.flatMap { $0.zoom == 1 ? nil : $0.zoom }
-        let bounds = settings.overridesScreenBounds ? geometry?.layoutSize : nil
-        let changed = zoom != DuoFrameScreenOverride.zoom || bounds != DuoFrameScreenOverride.bounds
-        DuoFrameScreenOverride.zoom = zoom
-        DuoFrameScreenOverride.bounds = bounds
-        // The first application is the launch state; nothing has read the old values yet, so no rebuild is needed.
-        if changed, hasAppliedScreenOverrides {
+        // `install()` already applied the launch settings, so this only reports a change the menu made.
+        if DuoFrameScreenOverride.apply(settings) {
             NotificationCenter.default.post(name: DuoFrameSimulator.screenMetricsDidChange, object: nil)
         }
-        hasAppliedScreenOverrides = true
     }
 
     private func ensureBackdropWindow() {

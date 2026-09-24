@@ -31,6 +31,8 @@ compiles to nothing in release builds.
   your app's real nav and tab items, rehomed and still interactive; in inner portrait, the pill in the top corner
   and a Duo-style bottom tab bar.
   Both stand in for the real bars whatever style the host device gave them.
+- **Device bezel** redrawn from the Duo simulator's device art (rim, buttons, hinge spine, fold notches), shown
+  wherever there's room around the frame, so on iPad; the frame is never shrunk to fit it.
 - **Draggable menu button** that snaps to any edge, hidden behind a shake gesture, off by default in release.
 
 ## Requirements
@@ -200,6 +202,13 @@ hinge opposite it.
 
 **Camera cutout.** Fixed to the hardware and rotating with the device: top of the strip in outer portrait, and
 following the rotation in outer landscape. The inner display's camera is under-display, so there's no cutout.
+
+**Device bezel.** A backdrop window beneath the app draws a grey studio gradient (darker in Dark Mode), the
+display's black glass, and a vector redraw of the 27.1 simulator's device art: the black border, the lit metal
+rim, the buttons, and either the closed device's hinge spine or the open device's fold notches. Its metrics and
+tones are measured off the simulator's frame, and it turns with the pose like the corners do. It only appears
+when it fits around the frame at the frame's own scale, which in practice means iPad; otherwise only the glass
+is drawn. Other device sizes get a plain shell without buttons.
 </details>
 
 ## What it can and can't fake

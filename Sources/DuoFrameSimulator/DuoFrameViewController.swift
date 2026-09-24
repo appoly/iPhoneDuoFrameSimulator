@@ -12,7 +12,7 @@ import UIKit
 /// window is sized to the footprint (and scaled for Display Zoom), window-level presentations — `.sheet`,
 /// `.fullScreenCover`, alerts, popovers — are constrained to the simulated device too, which content-only scaling
 /// could never reach. Debug chrome (outline, caption, menu button, split companion) lives in a separate passthrough
-/// window above the app window.
+/// window above the app window, and the backdrop and device bezel in a non-interactive one below it.
 final class DuoFrameViewController: UIViewController {
 
     let root: UIViewController
@@ -33,6 +33,8 @@ final class DuoFrameViewController: UIViewController {
     private let cornerStatus = DuoFrameStatusCluster()
     private let shield: DuoFrameShieldViewController
     private var chromeWindow: UIWindow?
+    private let backdrop = DuoFrameBackdropViewController()
+    private var backdropWindow: UIWindow?
     private var appliedScale: CGFloat = 1
     private var hasAppliedScreenOverrides = false
     private var isFramingWindow = false
@@ -208,6 +210,16 @@ final class DuoFrameViewController: UIViewController {
         hasAppliedScreenOverrides = true
     }
 
+    private func ensureBackdropWindow() {
+        guard backdropWindow == nil, let scene = view.window?.windowScene else { return }
+        let window = UIWindow(windowScene: scene)
+        window.windowLevel = .normal - 1
+        window.isUserInteractionEnabled = false
+        window.rootViewController = backdrop
+        backdropWindow = window
+        window.isHidden = false
+    }
+
     private func ensureChromeWindow() {
         guard chromeWindow == nil, let scene = view.window?.windowScene else { return }
         let window = DuoFramePassthroughWindow(windowScene: scene)
@@ -235,6 +247,7 @@ final class DuoFrameViewController: UIViewController {
         isFramingWindow = true
         defer { isFramingWindow = false }
         ensureChromeWindow()
+        ensureBackdropWindow()
         // Re-query the mirrored host preferences; the overlay window is frontmost, so it, not the app window, is the
         // one UIKit consults. Flags only, so no re-entrancy through the overrides during this pass.
         chrome.setNeedsStatusBarAppearanceUpdate()
@@ -254,6 +267,7 @@ final class DuoFrameViewController: UIViewController {
             if root.additionalSafeAreaInsets != host { root.additionalSafeAreaInsets = host }
             DuoFramePresentationOverride.framedWindow = nil
             chrome.clear()
+            backdrop.clear()
             chrome.hidesHostStatusBar = false
             chrome.hidesHostHomeIndicator = false
             verticalBar.detach()
@@ -294,9 +308,11 @@ final class DuoFrameViewController: UIViewController {
         let footprint = paneRect(size: geometry.size, scale: metrics.scale, centre: centre)
         setWindow(window, footprint: footprint, geometry: geometry, contentScale: metrics.contentScale)
         applySafeArea(target: geometry.safeAreaInsets.scaled(geometry.zoom), footprint: footprint, metrics: metrics)
+        let bezel = backdrop.show(geometry: geometry, display: footprint, scale: metrics.scale, arena: metrics.arena)
         chrome.show(
-            outline: footprint, radii: geometry.cornerRadii.scaled(metrics.scale),
-            caption: statusSummary(scale: metrics.contentScale), companion: nil, companionRadii: nil,
+            outline: bezel == nil ? geometry.cornerRadii.scaled(metrics.scale).path(in: footprint) : nil,
+            captionAnchor: bezel ?? footprint, caption: statusSummary(scale: metrics.contentScale),
+            companion: nil, companionRadii: nil,
             reservedRegions: reservedRegionPaths(geometry: geometry, footprint: footprint, contentScale: metrics.contentScale)
         )
         updateBars(geometry: geometry, footprint: footprint, contentScale: metrics.contentScale)
@@ -323,9 +339,13 @@ final class DuoFrameViewController: UIViewController {
         let companionRadii = DuoFrameCornerRadii
             .forPane(preset: geometry.preset, edge: geometry.sideEdge, isCompanion: true)
             .scaled(scale)
+        let bezel = backdrop.show(
+            geometry: geometry, display: appPane.union(companion), scale: scale, arena: arena
+        )
         chrome.show(
-            outline: appPane, radii: geometry.cornerRadii.scaled(scale),
-            caption: statusSummary(scale: metrics.contentScale), companion: companion, companionRadii: companionRadii,
+            outline: bezel == nil ? geometry.cornerRadii.scaled(scale).path(in: appPane) : nil,
+            captionAnchor: bezel ?? appPane, caption: statusSummary(scale: metrics.contentScale),
+            companion: companion, companionRadii: companionRadii,
             reservedRegions: reservedRegionPaths(geometry: geometry, footprint: appPane, contentScale: metrics.contentScale)
         )
         updateBars(geometry: geometry, footprint: appPane, contentScale: metrics.contentScale)
@@ -671,13 +691,12 @@ private final class DuoFrameChromeViewController: UIViewController {
         view.addSubview(companion)
 
         outlineLayer.fillColor = UIColor.clear.cgColor
-        outlineLayer.strokeColor = UIColor.white.withAlphaComponent(0.35).cgColor
         outlineLayer.lineWidth = 1
         outlineLayer.isHidden = true
         view.layer.addSublayer(outlineLayer)
 
         caption.font = .monospacedSystemFont(ofSize: 11, weight: .medium)
-        caption.textColor = .white.withAlphaComponent(0.7)
+        caption.textColor = .secondaryLabel
         caption.textAlignment = .center
         caption.isUserInteractionEnabled = false
         view.addSubview(caption)
@@ -703,6 +722,15 @@ private final class DuoFrameChromeViewController: UIViewController {
         // it stays above the reserved-region overlay and the notice.
         menuButton.isHidden = !DuoFrameSimulator.showsButtonByDefault
         view.addSubview(menuButton)
+
+        updateOutlineColour()
+        registerForTraitChanges([UITraitUserInterfaceStyle.self]) { (self: Self, _) in
+            self.updateOutlineColour()
+        }
+    }
+
+    private func updateOutlineColour() {
+        outlineLayer.strokeColor = UIColor.label.withAlphaComponent(0.3).resolvedColor(with: traitCollection).cgColor
     }
 
     override func viewDidLayoutSubviews() {
@@ -718,18 +746,19 @@ private final class DuoFrameChromeViewController: UIViewController {
         reservedRegionsView.regions = []
     }
 
+    /// `outline` is `nil` where the device bezel already marks the frame's edge; the caption goes by `captionAnchor`.
     func show(
-        outline: CGRect,
-        radii: DuoFrameCornerRadii,
+        outline: CGPath?,
+        captionAnchor: CGRect,
         caption text: String,
         companion companionRect: CGRect?,
         companionRadii: DuoFrameCornerRadii?,
         reservedRegions: [CGPath]
     ) {
         loadViewIfNeeded()
-        setMask(outlineLayer, path: radii.path(in: outline), frame: view.bounds)
-        outlineLayer.isHidden = false
-        layoutCaption(text: text, footprint: outline)
+        if let outline { setMask(outlineLayer, path: outline, frame: view.bounds) }
+        outlineLayer.isHidden = outline == nil
+        layoutCaption(text: text, footprint: captionAnchor)
         reservedRegionsView.frame = view.bounds
         reservedRegionsView.regions = reservedRegions
         if let companionRect, let companionRadii {

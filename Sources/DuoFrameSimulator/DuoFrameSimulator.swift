@@ -8,7 +8,7 @@
 #if DEBUG
 import SwiftUI
 
-/// Debug-only harness for checking layouts at iPhone Duo display sizes before the 27.1 simulator ships.
+/// Debug-only harness for checking layouts at iPhone Duo display sizes on any device.
 /// Call `install()` once before the first window appears (e.g. in `App.init` or `didFinishLaunching`); every
 /// app window's root is then re-parented under a `DuoFrameViewController`, driven from a menu in the top-right corner.
 /// The menu button is hidden by default and toggled with a shake gesture; pass `showsButton: true` to start visible.

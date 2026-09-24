@@ -22,18 +22,19 @@ compiles to nothing in release builds.
 ## Highlights
 
 - **The Duo display poses** plus a shelf of released iPhone form factors and a custom size.
-- **Faithful geometry** where it counts: size, safe-area insets, size classes, the phone idiom, and the real
-  production resize path (frame changes fire the same trait and safe-area callbacks a live fold would).
+- **Faithful geometry** where it counts: size, safe-area insets, size classes, the phone idiom, `UIScreen.bounds`,
+  and the real production resize path (frame changes fire the same trait and safe-area callbacks a live fold
+  would).
 - **Reframes the window, not the content**, so `.sheet`, `.fullScreenCover`, alerts and popovers land inside the
   footprint too.
-- **Match physical size**, **Display Zoom** and **Override `UIScreen.bounds`** for the awkward edge cases.
+- **Match physical size** and **Display Zoom** for the awkward edge cases.
 - **Cosmetic Duo bars**: a Duo-style side strip with a fake Dynamic Island, a frosted clock-and-network pill and
   your app's real nav and tab items, rehomed and still interactive; in inner portrait, the pill in the top corner
   and a Duo-style bottom tab bar.
   Both stand in for the real bars whatever style the host device gave them.
 - **Device bezel** redrawn from the Duo simulator's device art (rim, buttons, hinge spine, fold notches), shown
   wherever there's room around the frame, so on iPad; the frame is only shrunk to fit it if you ask.
-- **Draggable menu button** that snaps to any edge, hidden behind a shake gesture, off by default in release.
+- **Draggable menu button** that snaps to any edge, hidden by default and toggled with a shake gesture.
 
 ## Requirements
 
@@ -190,8 +191,8 @@ except the inner display in portrait, the one HIG exception, which keeps horizon
 
 **Inner portrait.** The clock and network glyph sit side by side on their pill in the top trailing corner. The
 real navigation bar stays; the tab bar is replaced by a floating pill of icon-over-title items with every tab
-showing, sized and placed as measured on the 27.1 simulator (86 pt apart for up to three tabs, otherwise sharing a
-400 pt pill). It sits in the tab bar controller's own view, so sheets and covers stack over it, and it tops the
+showing, sized and placed as measured on the 27.1 simulator (86 pt apart for up to three tabs, otherwise sharing
+372 pt). It sits in the tab bar controller's own view, so sheets and covers stack over it, and it tops the
 content's bottom safe area up to the bar's 83 pt band.
 
 **Split-view companion.** The inner Split View half draws the *other* app as a gradient placeholder pane on the
@@ -217,15 +218,12 @@ shell without buttons.
 
 ## What it can and can't fake
 
-**Faithful:** pose sizes, safe-area insets, size classes, corner radii, the side strip's glyph layout, and the
-production resize path (frame changes drive the same `traitCollectionDidChange` and `viewSafeAreaInsetsDidChange`
-callbacks a real fold would). All measured on the iPhone Duo simulator (Xcode 27.1).
+**Faithful:** pose sizes, safe-area insets, size classes, corner radii, `UIScreen.bounds`, the side strip's glyph
+layout, and the production resize path (frame changes drive the same `traitCollectionDidChange` and
+`viewSafeAreaInsetsDidChange` callbacks a real fold would). All measured on the iPhone Duo simulator (Xcode 27.1).
 
 **Still estimated:** the Display Zoom factors. Display Zoom can't be exercised on the Duo simulator (the setting
 isn't offered there), so these can only be confirmed on real hardware; the placeholders use the iPhone 17 Pro
 factor until then.
 
-**Out of reach until the 27.1 SDK:** real fold and hinge reserved regions, `ArrangementView`,
-`UIHingeInteraction`, and genuine system vertical bars. The vertical bars here are cosmetic; the tab
-switching is real, but it isn't the system's layout. The system keyboard follows the framed window but its own
-UI isn't adapted to the Duo.
+**Not simulated:** the system keyboard is the host's, so it spans the host screen rather than the framed window.

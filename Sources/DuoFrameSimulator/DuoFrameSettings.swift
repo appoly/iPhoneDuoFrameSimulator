@@ -65,6 +65,12 @@ enum DuoFramePreset: String, Codable, CaseIterable {
         }
     }
 
+    func safeAreaInsets(sideEdge: DuoFrameSideEdge, usesSideControls: Bool) -> UIEdgeInsets {
+        var insets = usesSideControls ? sideEdge.sideControlsInsets : DuoFrameInsets.portrait
+        if isSplit { insets.top = DuoFrameInsets.splitViewTop }
+        return insets
+    }
+
     /// Whether a full inner display's fold crease runs horizontally (the tall pose) or vertically (the wide one), or
     /// `nil` where the tool models no fold guide (outer displays, split panes, other devices).
     var foldIsHorizontal: Bool? {
@@ -138,6 +144,9 @@ enum DuoFrameInsets {
     static let portraitHomeIndicator: CGFloat = 34
     /// The fold division band's thickness (measured partially folded on the 27.1 Duo simulator).
     static let foldBand: CGFloat = 40
+    /// A Split View half's top inset (the full-screen poses have none). Fitted to where the navigation bar sits in 27.1
+    /// simulator screenshots, so the raw inset an app without a bar reads is inferred rather than measured.
+    static let splitViewTop: CGFloat = 25
 
     static let portrait = UIEdgeInsets(top: portraitStatusBar, left: 0, bottom: portraitHomeIndicator, right: 0)
 }
@@ -239,7 +248,7 @@ struct DuoFrameSettings: Codable, Equatable {
                 horizontalSizeClass: sizeClasses.horizontal,
                 verticalSizeClass: sizeClasses.vertical,
                 sideEdge: edge,
-                safeAreaInsets: usesSideControls ? sideEdge.sideControlsInsets : DuoFrameInsets.portrait,
+                safeAreaInsets: preset.safeAreaInsets(sideEdge: sideEdge, usesSideControls: usesSideControls),
                 isSplit: preset.isSplit,
                 cornerRadii: DuoFrameCornerRadii.forPane(preset: preset, edge: edge, isCompanion: false),
                 zoom: displayZoom ? DuoDevice.defaultDisplayZoomFactor : 1,

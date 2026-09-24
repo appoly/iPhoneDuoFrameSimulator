@@ -226,6 +226,7 @@ layout, and the production resize path (frame changes drive the same `traitColle
 
 **Still estimated:** the Display Zoom factors. Display Zoom can't be exercised on the Duo simulator (the setting
 isn't offered there), so these can only be confirmed on real hardware; the placeholders use the iPhone 17 Pro
-factor until then.
+factor until then. A Split View half's 25 pt top inset is fitted to where the navigation bar sits in simulator
+screenshots rather than read directly.
 
 **Not simulated:** the system keyboard is the host's, so it spans the host screen rather than the framed window.

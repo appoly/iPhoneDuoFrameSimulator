@@ -28,7 +28,17 @@ final class DuoFrameStatusCluster: UIView {
 
     static let glyphSide = DuoFrameNetworkGlyph.side
 
-    private let pill = UIVisualEffectView(effect: UIBlurEffect(style: .systemUltraThinMaterial))
+    /// No public effect matches the real pill's heavy blur with a faint tint; regular glass gets the blur closest.
+    private let pill: UIVisualEffectView = {
+        if #available(iOS 26, *) {
+            let glass = UIVisualEffectView(effect: UIGlassEffect(style: .regular))
+            glass.cornerConfiguration = .capsule()
+            return glass
+        }
+        let blur = UIVisualEffectView(effect: UIBlurEffect(style: .systemUltraThinMaterial))
+        blur.clipsToBounds = true
+        return blur
+    }()
     private let clock = UILabel()
     private let network = DuoFrameNetworkGlyph()
     private var clockTimer: Timer?
@@ -52,7 +62,6 @@ final class DuoFrameStatusCluster: UIView {
     override init(frame: CGRect) {
         super.init(frame: frame)
         isUserInteractionEnabled = false
-        pill.clipsToBounds = true
         // Monospaced digits so the label's width is stable as the minutes change and the text never truncates.
         clock.font = .monospacedDigitSystemFont(ofSize: 16, weight: .semibold)
         clock.textColor = .label
@@ -114,7 +123,9 @@ final class DuoFrameStatusCluster: UIView {
                 width: ring.x + Metrics.pillEndBeyondRing - start, height: Metrics.pillThickness
             )
         }
-        pill.layer.cornerRadius = half
+        if #unavailable(iOS 26) {
+            pill.layer.cornerRadius = half
+        }
     }
 
     // MARK: - Adaptive glyph colour

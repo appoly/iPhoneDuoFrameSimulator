@@ -11,7 +11,9 @@
 </p>
 
 <p align="center">
-  <img width="760" alt="The simulator running an app in the Duo Inner Split View half pose, with the presets menu and Options submenu open over the framed window and its Split View companion pane." src="docs/preview.png">
+  <img width="760" alt="Apple's Book Tracker sample app framed on an iPad mini in the Duo Inner Split View pose: the device bezel around the inner display, the Split View companion pane on the left, the library in the app's half with its toolbar and tab items in the side strip, and the presets menu and Options submenu open." src="docs/preview.png">
+  <br>
+  <sub>Apple's <a href="https://developer.apple.com/documentation/evaluations/book-tracker-using-evaluations-to-evaluate-an-intelligent-feature">Book Tracker</a> sample app in the Duo Inner · Split View pose, on an iPad mini.</sub>
 </p>
 
 A drop-in Swift package that reframes your running app to a chosen iPhone Duo footprint: the real size, safe

@@ -293,6 +293,19 @@ struct DuoFrameBezel: Equatable {
         return top + [side]
     }
 
+    /// How far the bezel reaches past a display of `size` on its widest side along each axis, in Duo points, so a
+    /// centred frame can leave room for it.
+    static func reach(geometry: DuoFrameGeometry, display size: CGSize) -> CGSize {
+        guard let bezel = DuoFrameBezel(geometry: geometry, display: CGRect(origin: .zero, size: size), scale: 1) else {
+            return .zero
+        }
+        let bounds = bezel.bounds
+        return CGSize(
+            width: max(-bounds.minX, bounds.maxX - size.width),
+            height: max(-bounds.minY, bounds.maxY - size.height)
+        )
+    }
+
     /// V notches where the fold meets the top and bottom edges, overshooting the edge so the cut is clean.
     private static func foldNotches(across rect: CGRect, foldX: CGFloat) -> CGPath {
         let path = CGMutablePath()

@@ -169,6 +169,9 @@ struct DuoFrameSettings: Codable, Equatable {
     var sideEdge = DuoFrameSideEdge.right
     var overridesSizeClasses = true
     var matchesPhysicalDensity = false
+    /// Draws the device bezel even where it doesn't fit around the frame, shrinking the frame to make room. Off by
+    /// default: the bezel then only appears where there's space for it at the frame's own scale.
+    var alwaysShowsBezel = false
     /// Whether the side strip's clock and network glyphs sample the content beneath them to flip black/white. Each
     /// sample re-renders the app content, so it carries a recurring CPU cost; off by default, and the glyphs then
     /// stay `.label`.

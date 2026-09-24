@@ -279,11 +279,16 @@ final class DuoFrameViewController: UIViewController {
 
         // A split pose lays the app and a companion pane across a full-inner-display stage; every other pose fills
         // its own footprint. Both share the fit-scale maths. Fit is to the whole screen: a frame the size of the
-        // screen renders 1:1, a smaller one at true point size centred, only a larger one scales below 1.
+        // screen renders 1:1, a smaller one at true point size centred, only a larger one scales below 1. A forced
+        // bezel counts as part of the device, on both sides so the frame stays centred.
         let stage = geometry.isSplit
             ? CGSize(width: geometry.size.width * 2 + Self.splitGutter, height: geometry.size.height)
             : geometry.size
-        let fit = min(arena.width / stage.width, arena.height / stage.height)
+        let reach = settings.alwaysShowsBezel ? DuoFrameBezel.reach(geometry: geometry, display: stage) : .zero
+        let fit = min(
+            arena.width / (stage.width + reach.width * 2),
+            arena.height / (stage.height + reach.height * 2)
+        )
         let scale = settings.matchesPhysicalDensity ? min(fit, physicalScale(for: geometry)) : min(fit, 1)
         // contentScale magnifies the zoomed-out layout back to the footprint.
         let metrics = FrameMetrics(arena: arena, scale: scale, contentScale: scale / geometry.zoom)
@@ -308,7 +313,10 @@ final class DuoFrameViewController: UIViewController {
         let footprint = paneRect(size: geometry.size, scale: metrics.scale, centre: centre)
         setWindow(window, footprint: footprint, geometry: geometry, contentScale: metrics.contentScale)
         applySafeArea(target: geometry.safeAreaInsets.scaled(geometry.zoom), footprint: footprint, metrics: metrics)
-        let bezel = backdrop.show(geometry: geometry, display: footprint, scale: metrics.scale, arena: metrics.arena)
+        let bezel = backdrop.show(
+            geometry: geometry, display: footprint, scale: metrics.scale, arena: metrics.arena,
+            forced: settings.alwaysShowsBezel
+        )
         chrome.show(
             outline: bezel == nil ? geometry.cornerRadii.scaled(metrics.scale).path(in: footprint) : nil,
             captionAnchor: bezel ?? footprint, caption: statusSummary(scale: metrics.contentScale),
@@ -340,7 +348,8 @@ final class DuoFrameViewController: UIViewController {
             .forPane(preset: geometry.preset, edge: geometry.sideEdge, isCompanion: true)
             .scaled(scale)
         let bezel = backdrop.show(
-            geometry: geometry, display: appPane.union(companion), scale: scale, arena: arena
+            geometry: geometry, display: appPane.union(companion), scale: scale, arena: arena,
+            forced: settings.alwaysShowsBezel
         )
         chrome.show(
             outline: bezel == nil ? geometry.cornerRadii.scaled(scale).path(in: appPane) : nil,

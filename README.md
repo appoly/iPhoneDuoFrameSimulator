@@ -32,7 +32,7 @@ compiles to nothing in release builds.
   and a Duo-style bottom tab bar.
   Both stand in for the real bars whatever style the host device gave them.
 - **Device bezel** redrawn from the Duo simulator's device art (rim, buttons, hinge spine, fold notches), shown
-  wherever there's room around the frame, so on iPad; the frame is never shrunk to fit it.
+  wherever there's room around the frame, so on iPad; the frame is only shrunk to fit it if you ask.
 - **Draggable menu button** that snaps to any edge, hidden behind a shake gesture, off by default in release.
 
 ## Requirements
@@ -133,6 +133,7 @@ relaunch while it's out of step.
 |---|---|---|
 | Override size classes | On | Reports the pose's size classes to `NavigationSplitView`, adaptive presentations and `horizontalSizeClass` checks |
 | Match physical size | Off | Scales the frame so a point renders at the simulated device's real physical size |
+| Always show device bezel | Off | Draws the bezel even where it wouldn't fit, shrinking the frame to make room; otherwise it only appears where it fits around the frame at the frame's own scale |
 | Display Zoom | Off | Lays out at the device's zoomed point size and swizzles `UIScreen.nativeScale` to match |
 | Override `UIScreen.bounds` | Off | Reports the frame size from `UIScreen.bounds` (can misplace the keyboard and alerts) |
 | Adapt status glyph colours | Off | Samples the content under the clock and network glyphs to flip them black or white; re-renders the app content on each sample, so it carries a CPU cost |
@@ -143,7 +144,9 @@ relaunch while it's out of step.
 The frame fits to the whole scene: the physical screen on iPhone, the window on iPad (so it follows Split View,
 Stage Manager and live resizes). A frame the size of the scene renders at 1:1; a smaller one renders at true
 point size, centred with a border; only a larger one scales below 1. So on a 17 Pro, iPhone Pro fills the screen,
-iPhone SE is a bordered 1:1, and iPhone Pro Max scales down to fit.
+iPhone SE is a bordered 1:1, and iPhone Pro Max scales down to fit. With **Always show device bezel** on, the
+bezel counts as part of the device when fitting, so it also caps **Match physical size** wherever the device and
+its bezel together won't fit at physical size.
 
 Where the frame reaches the host's own insets, an iPhone host's hardware (Dynamic Island, corners) still pushes
 the content clear. An iPad's status bar and home indicator are only software, so the frame keeps its own safe
@@ -208,7 +211,8 @@ display's black glass, and a vector redraw of the 27.1 simulator's device art: t
 rim, the buttons, and either the closed device's hinge spine or the open device's fold notches. Its metrics and
 tones are measured off the simulator's frame, and it turns with the pose like the corners do. It only appears
 when it fits around the frame at the frame's own scale, which in practice means iPad; otherwise only the glass
-is drawn. Other device sizes get a plain shell without buttons.
+is drawn, unless **Always show device bezel** shrinks the frame to make room. Other device sizes get a plain
+shell without buttons.
 </details>
 
 ## What it can and can't fake

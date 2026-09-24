@@ -173,7 +173,19 @@ final class DuoFrameMenuButton: UIButton {
             }
         )
 
-        let options = UIMenu(
+        let options = optionsMenu(isFramed: isFramed, hasStatusCluster: hasStatusCluster)
+
+        let status = UIAction(
+            title: controller.statusSummary(),
+            image: UIImage(systemName: "info.circle"),
+            attributes: .disabled
+        ) { _ in }
+
+        return [duoPresets, otherSizes, sideEdges, options, UIMenu(options: .displayInline, children: [status])]
+    }
+
+    private func optionsMenu(isFramed: Bool, hasStatusCluster: Bool) -> UIMenu {
+        UIMenu(
             title: "Options",
             image: UIImage(systemName: "slider.horizontal.3"),
             children: [
@@ -182,6 +194,12 @@ final class DuoFrameMenuButton: UIButton {
                     "Match physical size",
                     subtitle: "Scales so a point is the device's physical size",
                     keyPath: \.matchesPhysicalDensity,
+                    enabled: isFramed
+                ),
+                toggle(
+                    "Always show device bezel",
+                    subtitle: "Shrinks the frame to make room; otherwise shown only where it fits",
+                    keyPath: \.alwaysShowsBezel,
                     enabled: isFramed
                 ),
                 toggle(
@@ -210,14 +228,6 @@ final class DuoFrameMenuButton: UIButton {
                 )
             ]
         )
-
-        let status = UIAction(
-            title: controller.statusSummary(),
-            image: UIImage(systemName: "info.circle"),
-            attributes: .disabled
-        ) { _ in }
-
-        return [duoPresets, otherSizes, sideEdges, options, UIMenu(options: .displayInline, children: [status])]
     }
 
     /// Non-Duo frames: released iPhone form factors plus a custom size. Side controls don't apply to these.

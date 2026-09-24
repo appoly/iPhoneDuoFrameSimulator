@@ -95,15 +95,15 @@ final class DuoFrameBackdropViewController: UIViewController {
         shown = nil
     }
 
-    /// Draws the glass for `display`, and the bezel too when it fits inside `arena`; the frame is never shrunk to make
-    /// room for it. Returns the bezel's on-screen extent, or `nil` when only the glass is drawn.
-    func show(geometry: DuoFrameGeometry, display: CGRect, scale: CGFloat, arena: CGRect) -> CGRect? {
+    /// Draws the glass for `display`, and the bezel too when it fits inside `arena` or is `forced`. Returns the bezel's
+    /// on-screen extent, or `nil` when only the glass is drawn.
+    func show(geometry: DuoFrameGeometry, display: CGRect, scale: CGFloat, arena: CGRect, forced: Bool) -> CGRect? {
         loadViewIfNeeded()
         guard let bezel = DuoFrameBezel(geometry: geometry, display: display, scale: scale) else {
             clear()
             return nil
         }
-        let fits = arena.contains(bezel.bounds)
+        let fits = forced || arena.contains(bezel.bounds)
         withoutAnimation {
             glass.isHidden = false
             glass.path = fits ? bezel.black : bezel.screen

@@ -258,6 +258,7 @@ final class DuoFrameViewController: UIViewController {
             let host = view.safeAreaInsets
             if root.additionalSafeAreaInsets != host { root.additionalSafeAreaInsets = host }
             DuoFramePresentationOverride.framedWindow = nil
+            DuoFrameWindowInsets.reported = nil
             chrome.clear()
             backdrop.clear()
             chrome.hidesHostStatusBar = false
@@ -429,7 +430,11 @@ final class DuoFrameViewController: UIViewController {
             bottom: max(0, host.bottom - (arena.height - footprint.maxY)) / scale,
             right: max(0, host.right - (arena.width - footprint.maxX)) / scale
         )
-        chrome.hidesHostStatusBar = !honoursHost && overlap.top > 0
+        // Where the Duo keeps its status in the side strip there's no status bar along the top. Left showing, the
+        // host's would have UIKit draw its scroll edge effect across the frame's top, however far below it the frame
+        // sits.
+        let simulatesTopStatusBar = settings.geometry?.preset.hasTopStatusBar ?? true
+        chrome.hidesHostStatusBar = !simulatesTopStatusBar || (!honoursHost && overlap.top > 0)
         chrome.hidesHostHomeIndicator = !honoursHost && overlap.bottom > 0
         let counted = honoursHost ? overlap : .zero
         let additional = UIEdgeInsets(
@@ -441,6 +446,8 @@ final class DuoFrameViewController: UIViewController {
         if root.additionalSafeAreaInsets != additional {
             root.additionalSafeAreaInsets = additional
         }
+        DuoFrameWindowInsets.framedWindow = view.window
+        DuoFrameWindowInsets.reported = additional
         publishPresentationInsets(desired: additional)
     }
 

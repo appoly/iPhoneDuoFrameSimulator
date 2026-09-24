@@ -153,7 +153,9 @@ its bezel together won't fit at physical size.
 
 Where the frame reaches the host's own insets, an iPhone host's hardware (Dynamic Island, corners) still pushes
 the content clear. An iPad's status bar and home indicator are only software, so the frame keeps its own safe
-area and those bars hide or fade while it overlaps them.
+area and those bars hide or fade while it overlaps them. A window otherwise reports the host's top and bottom insets
+wherever it sits, so the framed window reports the simulated device's instead, and in the side-controls poses the
+host's status bar is hidden; either left alone would have UIKit draw its scroll edge effect across the frame's top.
 
 Settings persist in `UserDefaults`, so your last preset survives relaunches. They can also be forced at launch
 with `-DuoFrameSimulator.settings <base64-json>` for scripted screenshots.

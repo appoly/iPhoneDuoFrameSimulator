@@ -50,6 +50,14 @@ enum DuoFramePreset: String, Codable, CaseIterable {
         }
     }
 
+    /// Whether the simulated device shows its status bar along the top; the side-controls poses keep it in the strip.
+    var hasTopStatusBar: Bool {
+        switch self {
+        case .off, .innerPortrait, .otherDevice: true
+        case .outerLandscape, .outerPortrait, .innerLandscape, .innerSplitHalf: false
+        }
+    }
+
     var keepsHorizontalBars: Bool {
         switch self {
         case .innerPortrait: true

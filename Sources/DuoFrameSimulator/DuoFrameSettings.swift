@@ -25,7 +25,7 @@ enum DuoFramePreset: String, Codable, CaseIterable {
         case .outerPortrait: "Duo Outer · Portrait"
         case .innerLandscape: "Duo Inner · Landscape"
         case .innerPortrait: "Duo Inner · Portrait"
-        case .innerSplitHalf: "Duo Inner · Split View half"
+        case .innerSplitHalf: "Duo Inner · Split View"
         case .otherDevice: "Other sizes…"
         }
     }

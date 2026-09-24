@@ -116,7 +116,7 @@ nearest edge and remembers where you left it. It's **hidden by default** and tog
 | Duo Outer · Portrait | 466 × 678 | Compact × Regular |
 | Duo Inner · Landscape | 951 × 669 | Regular × Regular |
 | Duo Inner · Portrait | 669 × 951 | Regular × Regular |
-| Duo Inner · Split View half | 469 × 669 | Compact × Regular |
+| Duo Inner · Split View | 469 × 669 | Compact × Regular |
 
 An **Other sizes** submenu covers released iPhones (SE, mini, iPhone, XR, Plus, Pro, Pro Max) and a custom size,
 as a general "other device" simulator. Those are plain phones: compact width, their own safe area, uniform

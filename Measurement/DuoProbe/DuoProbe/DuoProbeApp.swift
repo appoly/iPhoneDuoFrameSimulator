@@ -9,6 +9,10 @@ import SwiftUI
 
 @main
 struct DuoProbeApp: App {
+    init() {
+        StatusDump.runIfRequested()
+    }
+
     var body: some Scene {
         WindowGroup {
             ContentView()

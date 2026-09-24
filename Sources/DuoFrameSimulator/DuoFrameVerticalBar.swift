@@ -72,7 +72,13 @@ final class DuoFrameVerticalBar: UIView {
     private weak var tabBarController: UITabBarController?
     private weak var navigationController: UINavigationController?
     private weak var hiddenTabBarController: UITabBarController?
-    private weak var hiddenNavigationBarController: UINavigationController?
+    // The navigation bar stays, as on the device: only its items move to the strip, keeping the title in place.
+    private let hiddenBarItems = NSHashTable<UIBarButtonItem>.weakObjects()
+    private let hiddenBackButtons = NSHashTable<UINavigationItem>.weakObjects()
+    /// With the items gone, the device lifts a large title into the bar's own row (`.inline` is UIKit's public form of
+    /// that layout), and once scrolled shows no bar at all rather than a collapsed title.
+    private let inlinedTitles = NSMapTable<UINavigationItem, DuoFrameInlinedTitle>.weakToStrongObjects()
+    private let hiddenTopEdgeEffects = NSHashTable<UIScrollView>.weakObjects()
     private weak var hiddenToolbarController: UINavigationController?
     private var refreshTimer: Timer?
     private var contentSignature = ""
@@ -170,7 +176,7 @@ final class DuoFrameVerticalBar: UIView {
         refreshTimer?.invalidate()
         refreshTimer = nil
         status.setColourAdaptation(false)
-        restoreBars(keepingTabBar: nil, navigationBar: nil, toolbar: nil)
+        restoreBars(keepingTabBar: nil, navigationController: nil)
         contentSignature = ""
         removeFromSuperview()
     }
@@ -195,14 +201,13 @@ final class DuoFrameVerticalBar: UIView {
     // MARK: - Hiding the real bars
 
     private func hideBars() {
-        restoreBars(keepingTabBar: tabBarController, navigationBar: navigationController, toolbar: navigationController)
+        restoreBars(keepingTabBar: tabBarController, navigationController: navigationController)
         if let tabBarController, !tabBarController.duoFrameIsTabBarHidden {
             tabBarController.duoFrameIsTabBarHidden = true
             hiddenTabBarController = tabBarController
         }
-        if let navigationController, !navigationController.isNavigationBarHidden {
-            navigationController.setNavigationBarHidden(true, animated: false)
-            hiddenNavigationBarController = navigationController
+        if let screen = navigationController?.topViewController {
+            moveItemsToStrip(from: screen)
         }
         if let navigationController, !navigationController.isToolbarHidden {
             navigationController.setToolbarHidden(true, animated: false)
@@ -210,23 +215,70 @@ final class DuoFrameVerticalBar: UIView {
         }
     }
 
-    /// Un-hides any bar this view hid on a controller other than the one to keep hidden.
-    private func restoreBars(
-        keepingTabBar tabBar: UITabBarController?,
-        navigationBar: UINavigationController?,
-        toolbar: UINavigationController?
-    ) {
+    /// Un-hides anything this view hid other than on the controllers to keep hidden (the navigation controller's top
+    /// screen for its navigation bar, the controller itself for its toolbar).
+    private func restoreBars(keepingTabBar tabBar: UITabBarController?, navigationController: UINavigationController?) {
         if let hiddenTabBarController, hiddenTabBarController !== tabBar {
             hiddenTabBarController.duoFrameIsTabBarHidden = false
             self.hiddenTabBarController = nil
         }
-        if let hiddenNavigationBarController, hiddenNavigationBarController !== navigationBar {
-            hiddenNavigationBarController.setNavigationBarHidden(false, animated: false)
-            self.hiddenNavigationBarController = nil
-        }
-        if let hiddenToolbarController, hiddenToolbarController !== toolbar {
+        restoreItems(keeping: navigationController?.topViewController)
+        if let hiddenToolbarController, hiddenToolbarController !== navigationController {
             hiddenToolbarController.setToolbarHidden(false, animated: false)
             self.hiddenToolbarController = nil
+        }
+    }
+
+    /// The navigation bar stays, as on the device: its items and back button move to the strip, and a large title
+    /// goes inline and vanishes once scrolled.
+    private func moveItemsToStrip(from screen: UIViewController) {
+        let navigationItem = screen.navigationItem
+        for item in Self.barItems(of: navigationItem) where !item.isHidden {
+            item.isHidden = true
+            hiddenBarItems.add(item)
+        }
+        if !navigationItem.hidesBackButton {
+            navigationItem.hidesBackButton = true
+            hiddenBackButtons.add(navigationItem)
+        }
+        if navigationItem.largeTitleDisplayMode.duoFrameShowsLargeTitle {
+            inlinedTitles.setObject(DuoFrameInlinedTitle(navigationItem), forKey: navigationItem)
+            navigationItem.largeTitleDisplayMode = .inline
+            let bar = screen.navigationController?.navigationBar
+            navigationItem.standardAppearance = (navigationItem.standardAppearance ?? bar?.standardAppearance)
+                .map(Self.invisibleWhenScrolled)
+        }
+        if #available(iOS 26, *), inlinedTitles.object(forKey: navigationItem) != nil,
+           let content = screen.viewIfLoaded {
+            for scrollView in content.duoFrameScrollViews where !scrollView.topEdgeEffect.isHidden {
+                scrollView.topEdgeEffect.isHidden = true
+                hiddenTopEdgeEffects.add(scrollView)
+            }
+        }
+    }
+
+    private func restoreItems(keeping screen: UIViewController?) {
+        let navigationItem = screen?.navigationItem
+        let kept = navigationItem.map { Set(Self.barItems(of: $0).map(ObjectIdentifier.init)) } ?? []
+        for item in hiddenBarItems.allObjects where !kept.contains(ObjectIdentifier(item)) {
+            item.isHidden = false
+            hiddenBarItems.remove(item)
+        }
+        for item in hiddenBackButtons.allObjects where item !== navigationItem {
+            item.hidesBackButton = false
+            hiddenBackButtons.remove(item)
+        }
+        if #available(iOS 26, *) {
+            let content = screen?.viewIfLoaded
+            for scrollView in hiddenTopEdgeEffects.allObjects where content.map(scrollView.isDescendant) != true {
+                scrollView.topEdgeEffect.isHidden = false
+                hiddenTopEdgeEffects.remove(scrollView)
+            }
+        }
+        let inlined = inlinedTitles.keyEnumerator().allObjects.compactMap { $0 as? UINavigationItem }
+        for item in inlined where item !== navigationItem {
+            inlinedTitles.object(forKey: item)?.restore(item)
+            inlinedTitles.removeObject(forKey: item)
         }
     }
 
@@ -234,7 +286,8 @@ final class DuoFrameVerticalBar: UIView {
 
     private func rebuildIfNeeded() {
         let topItem = navigationController?.topViewController?.navigationItem
-        let showsBack = (navigationController?.viewControllers.count ?? 0) > 1 && topItem?.hidesBackButton == false
+        let showsBack = (navigationController?.viewControllers.count ?? 0) > 1
+            && topItem.map { !$0.hidesBackButton || hiddenBackButtons.contains($0) } == true
         let leading = topItem.map(Self.leadingItems) ?? []
         let trailing = topItem.map(Self.trailingItems) ?? []
         let toolbar = hiddenToolbarController == nil
@@ -311,19 +364,47 @@ final class DuoFrameVerticalBar: UIView {
         items.map { "\(ObjectIdentifier($0).hashValue):\($0.isEnabled)" }.joined(separator: ",")
     }
 
+    /// The bar's scrolled appearance with no background and a clear title; the unscrolled inline title is drawn from
+    /// the large-title attributes, which stay as they were.
+    private static func invisibleWhenScrolled(_ base: UINavigationBarAppearance) -> UINavigationBarAppearance {
+        let appearance = base.copy()
+        appearance.backgroundEffect = nil
+        appearance.backgroundColor = .clear
+        appearance.backgroundImage = nil
+        appearance.shadowColor = .clear
+        appearance.shadowImage = nil
+        appearance.titleTextAttributes[.foregroundColor] = UIColor.clear
+        if #available(iOS 26, *) {
+            appearance.subtitleTextAttributes[.foregroundColor] = UIColor.clear
+        }
+        return appearance
+    }
+
+    private static func barItems(of navigationItem: UINavigationItem) -> [UIBarButtonItem] {
+        allLeadingItems(of: navigationItem) + allTrailingItems(of: navigationItem)
+    }
+
     private static func leadingItems(of navigationItem: UINavigationItem) -> [UIBarButtonItem] {
-        let grouped = navigationItem.leadingItemGroups.flatMap(\.barButtonItems)
-        return (grouped.isEmpty ? navigationItem.leftBarButtonItems ?? [] : grouped).filter(isActionable)
+        allLeadingItems(of: navigationItem).filter(isActionable)
     }
 
     private static func trailingItems(of navigationItem: UINavigationItem) -> [UIBarButtonItem] {
+        allTrailingItems(of: navigationItem).filter(isActionable)
+    }
+
+    private static func allLeadingItems(of navigationItem: UINavigationItem) -> [UIBarButtonItem] {
+        let grouped = navigationItem.leadingItemGroups.flatMap(\.barButtonItems)
+        return grouped.isEmpty ? navigationItem.leftBarButtonItems ?? [] : grouped
+    }
+
+    private static func allTrailingItems(of navigationItem: UINavigationItem) -> [UIBarButtonItem] {
         var items: [UIBarButtonItem] = []
         if #available(iOS 26, *), let pinned = navigationItem.pinnedTrailingGroup {
             items += pinned.barButtonItems
         }
         let grouped = navigationItem.trailingItemGroups.flatMap(\.barButtonItems)
         items += grouped.isEmpty ? navigationItem.rightBarButtonItems ?? [] : grouped
-        return items.filter(isActionable)
+        return items
     }
 
     private static func isActionable(_ item: UIBarButtonItem) -> Bool {
@@ -506,13 +587,17 @@ final class DuoFrameVerticalBar: UIView {
 private final class DuoFrameCentringBox: UIView {
 
     private let wrapped: UIView
+    /// The navigation bar still lays out its (hidden) items' custom views, resetting their origin to zero, so the view
+    /// is centred by moving this container rather than the view itself.
+    private let container = UIView()
 
     init(wrapping view: UIView, side: CGFloat) {
         wrapped = view
         super.init(frame: CGRect(x: 0, y: 0, width: side, height: side))
         translatesAutoresizingMaskIntoConstraints = false
         clipsToBounds = true
-        addSubview(view)
+        addSubview(container)
+        container.addSubview(view)
         NSLayoutConstraint.activate([
             widthAnchor.constraint(equalToConstant: side),
             heightAnchor.constraint(equalToConstant: side)
@@ -527,7 +612,44 @@ private final class DuoFrameCentringBox: UIView {
     override func layoutSubviews() {
         super.layoutSubviews()
         wrapped.sizeToFit()
-        wrapped.center = CGPoint(x: bounds.midX, y: bounds.midY)
+        wrapped.frame.origin = .zero
+        let size = wrapped.bounds.size
+        container.frame = CGRect(
+            x: (bounds.width - size.width) / 2, y: (bounds.height - size.height) / 2,
+            width: size.width, height: size.height
+        )
+    }
+}
+
+private extension UIView {
+    var duoFrameScrollViews: [UIScrollView] {
+        (self as? UIScrollView).map { [$0] } ?? subviews.flatMap(\.duoFrameScrollViews)
+    }
+}
+
+/// What inlining a navigation item's title changed, to put back when the strip lets go of it.
+private final class DuoFrameInlinedTitle {
+    private let largeTitleDisplayMode: UINavigationItem.LargeTitleDisplayMode
+    private let standardAppearance: UINavigationBarAppearance?
+
+    init(_ item: UINavigationItem) {
+        largeTitleDisplayMode = item.largeTitleDisplayMode
+        standardAppearance = item.standardAppearance
+    }
+
+    func restore(_ item: UINavigationItem) {
+        item.largeTitleDisplayMode = largeTitleDisplayMode
+        item.standardAppearance = standardAppearance
+    }
+}
+
+private extension UINavigationItem.LargeTitleDisplayMode {
+    var duoFrameShowsLargeTitle: Bool {
+        switch self {
+        case .automatic, .always: true
+        case .never, .inline: false
+        @unknown default: false
+        }
     }
 }
 #endif

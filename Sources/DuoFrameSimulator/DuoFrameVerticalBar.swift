@@ -82,6 +82,8 @@ final class DuoFrameVerticalBar: UIView {
     private weak var hiddenToolbarController: UINavigationController?
     private var refreshTimer: Timer?
     private var contentSignature = ""
+    /// A sheet reaching under the strip keeps its own (horizontal) bars, so the strip shows only its status glyphs.
+    private var isCoveredBySheet = false
 
     private let camera = UIView()
     private let status = DuoFrameStatusCluster()
@@ -194,8 +196,15 @@ final class DuoFrameVerticalBar: UIView {
         let containers = root.duoFrameFrontmostFullScreen.duoFrameOnScreenContainers
         tabBarController = containers.lazy.compactMap { $0 as? UITabBarController }.first
         navigationController = containers.reversed().lazy.compactMap { $0 as? UINavigationController }.first
+        isCoveredBySheet = root.duoFrameFrontmostSheet.map(Self.coversStrip) ?? false
         hideBars()
         rebuildIfNeeded()
+    }
+
+    private static func coversStrip(_ sheet: UIViewController) -> Bool {
+        guard let view = sheet.viewIfLoaded, let window = view.window else { return false }
+        let overlap = DuoFramePresentationOverride.stripOverlap(of: view.convert(view.bounds, to: window), in: window)
+        return overlap.left > 0 || overlap.right > 0
     }
 
     // MARK: - Hiding the real bars
@@ -285,15 +294,15 @@ final class DuoFrameVerticalBar: UIView {
     // MARK: - Building the stacks
 
     private func rebuildIfNeeded() {
-        let topItem = navigationController?.topViewController?.navigationItem
+        let topItem = isCoveredBySheet ? nil : navigationController?.topViewController?.navigationItem
         let showsBack = (navigationController?.viewControllers.count ?? 0) > 1
             && topItem.map { !$0.hidesBackButton || hiddenBackButtons.contains($0) } == true
         let leading = topItem.map(Self.leadingItems) ?? []
         let trailing = topItem.map(Self.trailingItems) ?? []
-        let toolbar = hiddenToolbarController == nil
+        let toolbar = hiddenToolbarController == nil || isCoveredBySheet
             ? []
             : (navigationController?.topViewController?.toolbarItems ?? []).filter(Self.isActionable)
-        let tabs = tabBarController?.tabBar.items ?? []
+        let tabs = isCoveredBySheet ? [] : tabBarController?.tabBar.items ?? []
         let selectedIndex = tabBarController?.selectedIndex ?? NSNotFound
 
         let signature = [

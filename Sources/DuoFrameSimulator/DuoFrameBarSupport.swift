@@ -19,6 +19,17 @@ extension UIViewController {
         return top
     }
 
+    /// A sheet or popover over the frontmost full-screen presentation, if one is showing.
+    var duoFrameFrontmostSheet: UIViewController? {
+        var sheet: UIViewController?
+        var top = duoFrameFrontmostFullScreen
+        while let presented = top.presentedViewController, !presented.isBeingDismissed {
+            if !presented.duoFrameIsFullScreenPresentation { sheet = presented }
+            top = presented
+        }
+        return sheet
+    }
+
     /// Container controllers whose views are on screen, in hierarchy order, so the last navigation controller is the
     /// one driving the visible screen.
     var duoFrameOnScreenContainers: [UIViewController] {

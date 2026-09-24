@@ -187,9 +187,10 @@ combined Wi-Fi/cellular glyph on a frosted pill (camera and status-cluster metri
 the nav/tab item spacing is still from Apple's HIG screenshots), then the nav bar's items, then the tab bar's items
 bottom-aligned, all on a column 48 pt in from the display edge. The buttons drive the real controllers, including
 SwiftUI's native `TabView`, so tab switching genuinely selects. The navigation bar itself stays, as on the Duo:
-only its items move to the strip, and a large title sits inline in the bar and disappears once scrolled. Every
-pose puts the controls on a side edge except the inner display in portrait, the one HIG exception, which keeps
-horizontal bars.
+only its items move to the strip, and a large title sits inline in the bar and disappears once scrolled. A sheet
+that reaches under the strip keeps its own bars and takes the strip's inset, leaving the strip showing only its
+status glyphs. Every pose puts the controls on a side edge except the inner display in portrait, the one HIG
+exception, which keeps horizontal bars.
 
 **Inner portrait.** The clock and network glyph sit side by side on their pill in the top trailing corner. The
 real navigation bar stays; the tab bar is replaced by a floating pill of icon-over-title items with every tab

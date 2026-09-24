@@ -11,8 +11,8 @@ import UIKit
 /// A full-screen presentation (`.fullScreenCover`, a full-screen modal) attaches to the window, above the hosted root,
 /// so it never inherits the faked Duo safe area the shield hands the root — it lays out edge to edge, ignoring the
 /// side-controls strip. This swizzles `present` so a full-screen presentation inside the framed window is given the
-/// same faked insets through its own `additionalSafeAreaInsets`. Sheets and popovers are left alone; their card shape
-/// shouldn't take a safe-area inset.
+/// same faked insets through its own `additionalSafeAreaInsets`. A sheet keeps its card shape, but where it reaches
+/// under the side-controls strip it takes the strip's inset for the overlap, as on the device.
 enum DuoFramePresentationOverride {
 
     /// The framed app window, or nil when framing is off. A presentation is only adjusted when it belongs to it.
@@ -23,6 +23,14 @@ enum DuoFramePresentationOverride {
     static var additionalInsets: UIEdgeInsets = .zero
 
     private static var isInstalled = false
+
+    /// How far `frame` (in the framed window's coordinates) reaches into the side-controls strip on each side.
+    static func stripOverlap(of frame: CGRect, in window: UIWindow) -> UIEdgeInsets {
+        let bounds = window.bounds
+        let left = min(additionalInsets.left, max(0, bounds.minX + additionalInsets.left - frame.minX))
+        let right = min(additionalInsets.right, max(0, frame.maxX - (bounds.maxX - additionalInsets.right)))
+        return UIEdgeInsets(top: 0, left: left, bottom: 0, right: right)
+    }
 
     static func install() {
         guard !isInstalled else { return }
@@ -43,12 +51,30 @@ enum DuoFramePresentationOverride {
 private extension UIViewController {
     @objc func duoFramePresent(_ viewControllerToPresent: UIViewController, animated: Bool, completion: (() -> Void)?) {
         duoFramePresent(viewControllerToPresent, animated: animated, completion: completion)   // the original
-        guard let window = DuoFramePresentationOverride.framedWindow,
-              view.window === window,
-              viewControllerToPresent.duoFrameIsFullScreenPresentation else { return }
+        guard let window = DuoFramePresentationOverride.framedWindow, view.window === window else { return }
+        guard viewControllerToPresent.duoFrameIsFullScreenPresentation else {
+            viewControllerToPresent.duoFrameInsetForStrip(in: window)
+            return
+        }
         let insets = DuoFramePresentationOverride.additionalInsets
         if viewControllerToPresent.additionalSafeAreaInsets != insets {
             viewControllerToPresent.additionalSafeAreaInsets = insets
+        }
+    }
+
+    /// The sheet's final frame is only known once its transition has a container, so the inset is set alongside the
+    /// presentation animation.
+    func duoFrameInsetForStrip(in window: UIWindow) {
+        let apply = { [weak self] (container: UIView?) in
+            guard let self, let presentation = presentationController, let container else { return }
+            let frame = container.convert(presentation.frameOfPresentedViewInContainerView, to: window)
+            let insets = DuoFramePresentationOverride.stripOverlap(of: frame, in: window)
+            if additionalSafeAreaInsets != insets { additionalSafeAreaInsets = insets }
+        }
+        if let coordinator = transitionCoordinator {
+            coordinator.animate(alongsideTransition: { apply($0.containerView) })
+        } else {
+            apply(presentationController?.containerView)
         }
     }
 }

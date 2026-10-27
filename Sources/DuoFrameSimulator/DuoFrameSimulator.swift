@@ -31,6 +31,7 @@ public enum DuoFrameSimulator {
         DuoFrameScreenOverride.apply(DuoFrameSettings.load())
         DuoFramePresentationOverride.install()
         DuoFrameWindowInsets.install()
+        DuoFrameRootOverride.install()
         for name in [UIWindow.didBecomeVisibleNotification, UIWindow.didBecomeKeyNotification] {
             NotificationCenter.default.addObserver(forName: name, object: nil, queue: .main) { notification in
                 guard let window = notification.object as? UIWindow else { return }

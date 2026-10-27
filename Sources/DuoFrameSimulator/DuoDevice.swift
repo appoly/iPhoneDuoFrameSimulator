@@ -55,7 +55,7 @@ struct DuoDevice: Codable, Equatable {
     ]
 
     /// Measured on an iPhone 17 Pro: 402 pt → 320 pt, `scale / nativeScale` = 3 / 3.76875. Used where the real
-    /// value is unknown (custom sizes, the Duo).
+    /// value is unknown (custom sizes).
     static let defaultDisplayZoomFactor: CGFloat = 320 / 402
 
     /// `UIScreen.scale / nativeScale` with Display Zoom on: the layout shrinks to `size × factor` points.

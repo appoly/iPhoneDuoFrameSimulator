@@ -173,7 +173,11 @@ final class DuoFrameMenuButton: UIButton {
             }
         )
 
-        let options = optionsMenu(isFramed: isFramed, hasStatusCluster: hasStatusCluster)
+        let options = optionsMenu(
+            isFramed: isFramed,
+            hasStatusCluster: hasStatusCluster,
+            isOtherDevice: settings.preset == .otherDevice
+        )
 
         let status = UIAction(
             title: controller.statusSummary(),
@@ -184,7 +188,7 @@ final class DuoFrameMenuButton: UIButton {
         return [duoPresets, otherSizes, sideEdges, options, UIMenu(options: .displayInline, children: [status])]
     }
 
-    private func optionsMenu(isFramed: Bool, hasStatusCluster: Bool) -> UIMenu {
+    private func optionsMenu(isFramed: Bool, hasStatusCluster: Bool, isOtherDevice: Bool) -> UIMenu {
         UIMenu(
             title: "Options",
             image: UIImage(systemName: "slider.horizontal.3"),
@@ -204,9 +208,11 @@ final class DuoFrameMenuButton: UIButton {
                 ),
                 toggle(
                     "Display Zoom",
-                    subtitle: "Fewer layout points, zoomed UIScreen.nativeScale; rebuilds the SwiftUI tree",
+                    subtitle: isFramed && !isOtherDevice
+                        ? "Not offered on iPhone Duo"
+                        : "Fewer layout points, zoomed UIScreen.nativeScale; rebuilds the SwiftUI tree",
                     keyPath: \.displayZoom,
-                    enabled: isFramed
+                    enabled: isOtherDevice
                 ),
                 toggle(
                     "Override UIScreen.bounds",

@@ -259,7 +259,7 @@ struct DuoFrameSettings: Codable, Equatable {
                 safeAreaInsets: preset.safeAreaInsets(sideEdge: sideEdge, usesSideControls: usesSideControls),
                 isSplit: preset.isSplit,
                 cornerRadii: DuoFrameCornerRadii.forPane(preset: preset, edge: edge, isCompanion: false),
-                zoom: displayZoom ? DuoDevice.defaultDisplayZoomFactor : 1,
+                zoom: 1,
                 pointsPerInch: DuoDevice.duoPointsPerInch
             )
         }

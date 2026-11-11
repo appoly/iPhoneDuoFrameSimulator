@@ -177,10 +177,10 @@ drag). Instead it sets the window's own `bounds`, `transform` and `center` withi
 <details>
 <summary><b>Safe area</b></summary>
 
-The framed window inherits little or none of the host's safe area (a sub-screen window usually reports zero), so
-the hosted root is given `additionalSafeAreaInsets` equal to the faked Duo inset, clamped up to the host's real
-overlap where the footprint still reaches a hardware region. There's no transform between the controller's view
-and the window, so the child inherits the window's own insets normally.
+The framed window passes the host's top and bottom insets down wherever it sits, so the hosted root sits in a
+shield that inherits none of them and is given `additionalSafeAreaInsets` equal to the faked Duo inset, clamped up to
+the host's real overlap where the footprint still reaches a hardware region. A full-screen presentation can't be
+shielded, so it gets the difference instead, negative along the top and bottom to cancel the host's insets.
 </details>
 
 <details>

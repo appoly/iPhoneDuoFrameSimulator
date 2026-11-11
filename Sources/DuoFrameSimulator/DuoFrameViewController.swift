@@ -451,17 +451,26 @@ final class DuoFrameViewController: UIViewController {
         publishPresentationInsets(desired: additional)
     }
 
-    /// A full-screen presentation can't be shielded, so it inherits the window's real insets. Hand it the shortfall up
-    /// to the faked total, per edge — chiefly the side-controls strip, which the window reports nothing for.
+    /// A full-screen presentation can't be shielded, so it inherits the window's real insets (the host's, whatever the
+    /// swizzled getter says). Hand it the difference to the faked total, per edge: negative along the top and bottom
+    /// to cancel the host's, and on the sides only the side-controls strip, which the window reports nothing for.
     private func publishPresentationInsets(desired: UIEdgeInsets) {
         let host = view.safeAreaInsets
-        DuoFramePresentationOverride.framedWindow = view.window
-        DuoFramePresentationOverride.additionalInsets = UIEdgeInsets(
-            top: max(0, desired.top - host.top),
+        let insets = UIEdgeInsets(
+            top: desired.top - host.top,
             left: max(0, desired.left - host.left),
-            bottom: max(0, desired.bottom - host.bottom),
+            bottom: desired.bottom - host.bottom,
             right: max(0, desired.right - host.right)
         )
+        DuoFramePresentationOverride.framedWindow = view.window
+        DuoFramePresentationOverride.additionalInsets = insets
+        var presented = presentedViewController
+        while let next = presented {
+            if next.duoFrameIsFullScreenPresentation, next.additionalSafeAreaInsets != insets {
+                next.additionalSafeAreaInsets = insets
+            }
+            presented = next.presentedViewController
+        }
     }
 
     /// The bar lives in the overlay chrome window, above the app window, so it stays visible over a full-screen

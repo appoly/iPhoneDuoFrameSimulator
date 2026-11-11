@@ -18,8 +18,8 @@ enum DuoFramePresentationOverride {
     /// The framed app window, or nil when framing is off. A presentation is only adjusted when it belongs to it.
     static weak var framedWindow: UIWindow?
     /// Added to a full-screen presentation so its safe area matches the faked one: the faked total minus what the
-    /// window already reports, per edge. Sides are the interesting part (the window reports none, the Duo strip is
-    /// entirely faked); top and bottom can't drop below what the window reports, since a presentation isn't shielded.
+    /// window passes down, per edge. Top and bottom go negative to cancel the host's insets; the sides only add the
+    /// Duo strip, which the window reports nothing for.
     static var additionalInsets: UIEdgeInsets = .zero
 
     private static var isInstalled = false

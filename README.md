@@ -156,6 +156,8 @@ the content clear. An iPad's status bar and home indicator are only software, so
 area and those bars hide or fade while it overlaps them. A window otherwise reports the host's top and bottom insets
 wherever it sits, so the framed window reports the simulated device's instead, and in the side-controls poses the
 host's status bar is hidden; either left alone would have UIKit draw its scroll edge effect across the frame's top.
+The overlay window that hides it stays above the app's own windows (a debug badge, a toast), since UIKit takes the
+status bar from the frontmost one.
 
 Settings persist in `UserDefaults`, so your last preset survives relaunches. They can also be forced at launch
 with `-DuoFrameSimulator.settings <base64-json>` for scripted screenshots.

@@ -228,6 +228,24 @@ final class DuoFrameViewController: UIViewController {
         // here; the stored reference stops a second window being built (and `chrome` re-rooted onto it).
         chromeWindow = window
         window.isHidden = false
+        for name in [UIWindow.didBecomeVisibleNotification, UIWindow.didBecomeHiddenNotification] {
+            NotificationCenter.default.addObserver(
+                self, selector: #selector(keepChromeWindowFrontmost), name: name, object: nil
+            )
+        }
+        keepChromeWindowFrontmost()
+    }
+
+    /// UIKit takes the status bar and home indicator preferences from the frontmost window, so an app's own overlay
+    /// window (a debug badge, a toast) would otherwise bring back the host status bar the chrome hides.
+    @objc private func keepChromeWindowFrontmost() {
+        guard let chromeWindow, let scene = chromeWindow.windowScene else { return }
+        let highest = scene.windows
+            .filter { !($0 is DuoFramePassthroughWindow) && !$0.isHidden && $0.duoFrameIsAppWindow }
+            .map(\.windowLevel.rawValue)
+            .max() ?? UIWindow.Level.normal.rawValue
+        let level = UIWindow.Level(max(UIWindow.Level.normal.rawValue, highest) + 1)
+        if chromeWindow.windowLevel != level { chromeWindow.windowLevel = level }
     }
 
     // MARK: - Framing the window
@@ -904,6 +922,13 @@ private extension UIButton.Configuration {
         config.subtitle = "Tap to dismiss"
         config.contentInsets = NSDirectionalEdgeInsets(top: 10, leading: 14, bottom: 10, trailing: 14)
         return config
+    }
+}
+
+private extension UIWindow {
+    /// A plain `UIWindow` or an app subclass; UIKit's own windows (keyboard, text effects) are private subclasses.
+    var duoFrameIsAppWindow: Bool {
+        type(of: self) == UIWindow.self || Bundle(for: type(of: self)).bundleIdentifier != "com.apple.UIKitCore"
     }
 }
 
